@@ -1,0 +1,47 @@
+RUST_LOG=info cargo run --release --bin TempRS    # See info and above
+RUST_LOG=debug cargo run --release --bin TempRS   # See all logs
+RUST_LOG=warn cargo run --release --bin TempRS    # Only warnings/errors
+
+
+# Cache Management
+# ----------------
+# Auto-cleanup on app startup:
+#   - Removes entries older than 7 days
+#   - Enforces 100GB size limit (removes oldest first)
+#
+# To change limits, edit src/app/player_app.rs:
+#   cleanup_cache_with_limits(7, 100)  // 7 days, 100GB
+
+# Manual cache deletion
+rm -rf ~/.cache/TempRS/
+
+# Or delete specific cache types:
+rm -rf ~/.cache/TempRS/artwork/       # Artwork cache (500x500 images)
+rm -rf ~/.cache/TempRS/audio/         # Audio chunks (512KB each)
+rm -rf ~/.cache/TempRS/cache.db       # Cache metadata database
+
+# Check cache size
+du -sh ~/.cache/TempRS/
+du -sh ~/.cache/TempRS/artwork/
+du -sh ~/.cache/TempRS/audio/
+
+
+Yes! ✅ It's working now! The shader test is running without errors.
+
+What we fixed:
+
+Converter: Now generates let instead of invalid vec2<f32> uv = ...
+Shader file: Manually cleaned up converted_test.wgsl to proper WGSL syntax
+shader_test: Now accepts file arguments
+Working workflow:
+
+# 1. Save Shadertoy GLSL to file
+echo "void mainImage(...) { ... }" > shader.glsl
+
+# 2. Convert to WGSL
+./target/release/shadertoy_converter shader.glsl output.wgsl
+
+# 3. Test immediately
+./target/release/shader_test output.wgsl
+
+# 4. If works → integrate into main app!

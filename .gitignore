@@ -1,0 +1,47 @@
+# === Rust / Cargo / Build ===
+target/
+debug/
+release/
+Cargo.lock
+
+# === IDEs ===
+.idea/
+.vscode/
+*.iml
+
+# === OS Crap ===
+.DS_Store
+Thumbs.db
+
+# === Project-specific ===
+OLDPROJECT/
+ideas/
+testunit/
+target/
+Cache/
+cache/
+cache_db/
+artwork_cache/
+tmp/
+*.mp3
+*.wav
+*.ogg
+
+# === Sensitive ===
+*.env
+.env.local
+.env.development
+secret_*
+tokens.db
+token_data.json
+oauth_token*
+oauth/*
+*.pem
+*.key
+*.crt
+
+# === Do NOT track these user-specific files ===
+*.log
+*.tmp
+*.swp
+target/

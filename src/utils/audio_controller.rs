@@ -1,0 +1,200 @@
+use crate::utils::mediaplay::AudioPlayer;
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+pub enum AudioCommand {
+    Play {
+        url: String,
+        token: String,
+        track_id: u64,
+    },
+    Pause,
+    Resume,
+    Stop,
+    SetVolume(f32),
+    Seek(Duration),
+}
+
+pub struct AudioController {
+    command_tx: Sender<AudioCommand>,
+    position: Arc<Mutex<Duration>>,
+    duration: Arc<Mutex<Option<Duration>>>,
+    is_finished: Arc<Mutex<bool>>,
+    #[allow(dead_code)]
+    current_url: Arc<Mutex<Option<String>>>,
+    #[allow(dead_code)]
+    current_token: Arc<Mutex<Option<String>>>,
+    #[allow(dead_code)]
+    current_volume: Arc<Mutex<f32>>,
+}
+
+impl AudioController {
+    pub fn new(
+        bass_energy: Arc<Mutex<f32>>,
+        mid_energy: Arc<Mutex<f32>>,
+        high_energy: Arc<Mutex<f32>>,
+    ) -> Self {
+        let (command_tx, command_rx): (Sender<AudioCommand>, Receiver<AudioCommand>) = channel();
+        let position = Arc::new(Mutex::new(Duration::ZERO));
+        let duration = Arc::new(Mutex::new(None));
+        let is_finished = Arc::new(Mutex::new(false));
+        let current_url = Arc::new(Mutex::new(None));
+        let current_token = Arc::new(Mutex::new(None));
+        let current_volume = Arc::new(Mutex::new(1.0));
+
+        let position_clone = position.clone();
+        let duration_clone = duration.clone();
+        let is_finished_clone = is_finished.clone();
+        let current_url_clone = current_url.clone();
+        let current_token_clone = current_token.clone();
+        let current_volume_clone = current_volume.clone();
+
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let mut player: Option<AudioPlayer> = None;
+
+            loop {
+                // Handle commands
+                while let Ok(cmd) = command_rx.try_recv() {
+                    match cmd {
+                        AudioCommand::Play { url, token, track_id } => {
+                            log::debug!("[AudioController] Received Play command for track {}", track_id);
+
+                            // Reset finished flag BEFORE loading new track
+                            *is_finished_clone.lock().unwrap() = false;
+
+                            // Cleanup old player first to free memory
+                            if let Some(mut old_player) = player.take() {
+                                log::debug!("[AudioController] Stopping previous player");
+                                old_player.stop();
+                                drop(old_player);
+                            }
+
+                            *current_url_clone.lock().unwrap() = Some(url.clone());
+                            *current_token_clone.lock().unwrap() = Some(token.clone());
+
+                            log::debug!("[AudioController] Starting cached audio playback...");
+                            match rt.block_on(AudioPlayer::new_and_play_cached(
+                                &url, 
+                                &token, 
+                                track_id,
+                                Arc::clone(&bass_energy),
+                                Arc::clone(&mid_energy),
+                                Arc::clone(&high_energy),
+                            )) {
+                                Ok(mut p) => {
+                                    log::info!("[AudioController] Audio playback started");
+                                    // Apply stored volume to new player
+                                    let vol = *current_volume_clone.lock().unwrap();
+                                    p.set_volume(vol);
+                                    log::debug!("[AudioController] Applied volume: {}", vol);
+                                    *duration_clone.lock().unwrap() = p.get_duration();
+                                    player = Some(p);
+                                }
+                                Err(e) => {
+                                    log::error!("[AudioController] Error loading audio: {}", e);
+                                }
+                            }
+                        }
+                        AudioCommand::Pause => {
+                            log::debug!("[AudioController] Received Pause command");
+                            if let Some(p) = player.as_mut() {
+                                p.pause();
+                            }
+                        }
+                        AudioCommand::Resume => {
+                            log::debug!("[AudioController] Received Resume command");
+                            if let Some(p) = player.as_mut() {
+                                p.resume();
+                            }
+                        }
+                        AudioCommand::Stop => {
+                            log::debug!("[AudioController] Received Stop command");
+                            if let Some(mut p) = player.take() {
+                                p.stop();
+                                // Explicitly drop to free memory immediately
+                                drop(p);
+                            }
+                            *position_clone.lock().unwrap() = Duration::ZERO;
+                            *duration_clone.lock().unwrap() = None;
+                            *is_finished_clone.lock().unwrap() = true;
+                        }
+                        AudioCommand::SetVolume(vol) => {
+                            *current_volume_clone.lock().unwrap() = vol;
+                            if let Some(p) = player.as_mut() {
+                                p.set_volume(vol);
+                            }
+                        }
+                        AudioCommand::Seek(pos) => {
+                            log::debug!("[AudioController] Received Seek command to {:?}", pos);
+                            if let Some(p) = player.as_mut() {
+                                let url = current_url_clone.lock().unwrap().clone();
+                                let token = current_token_clone.lock().unwrap().clone();
+                                if let (Some(u), Some(t)) = (url, token) {
+                                    if let Err(e) = rt.block_on(p.seek(pos, &u, &t)) {
+                                        log::error!("[AudioController] Seek error: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Update position and finished status
+                if let Some(p) = player.as_ref() {
+                    *position_clone.lock().unwrap() = p.get_position();
+                    *is_finished_clone.lock().unwrap() = p.is_finished();
+                }
+
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+
+        Self {
+            command_tx,
+            position,
+            duration,
+            is_finished,
+            current_url,
+            current_token,
+            current_volume,
+        }
+    }
+
+    pub fn play(&self, url: String, token: String, track_id: u64) {
+        let _ = self.command_tx.send(AudioCommand::Play { url, token, track_id });
+    }
+
+    pub fn pause(&self) {
+        let _ = self.command_tx.send(AudioCommand::Pause);
+    }
+
+    pub fn resume(&self) {
+        let _ = self.command_tx.send(AudioCommand::Resume);
+    }
+
+    pub fn stop(&self) {
+        let _ = self.command_tx.send(AudioCommand::Stop);
+    }
+
+    pub fn set_volume(&self, volume: f32) {
+        let _ = self.command_tx.send(AudioCommand::SetVolume(volume));
+    }
+
+    pub fn seek(&self, position: Duration) {
+        let _ = self.command_tx.send(AudioCommand::Seek(position));
+    }
+
+    pub fn get_position(&self) -> Duration {
+        *self.position.lock().unwrap()
+    }
+
+    pub fn get_duration(&self) -> Option<Duration> {
+        *self.duration.lock().unwrap()
+    }
+
+    pub fn is_finished(&self) -> bool {
+        *self.is_finished.lock().unwrap()
+    }
+}

@@ -86,6 +86,9 @@ cargo build --release
 - **Threads**: 20 (audio, FFT, download, HTTP clients, egui, WGPU, tokio workers)
 - **Architecture**: Multi-threaded with zero blocking - audio, FFT, and UI all run independently
 
+![Performance Metrics](images/09-htop.png)
+*Real-world performance: <1% CPU usage per thread, ~445MB RAM, load average 0.42*
+
 **Optimizations**:
 - Dual-channel FFT: separate download + playback streams prevent blocking
 - Progressive streaming: no full file buffering, minimal memory usage

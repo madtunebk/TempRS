@@ -2,6 +2,10 @@
 
 A Rust-based desktop music player for SoundCloud with progressive audio streaming.
 
+![TempRS Now Playing](images/08_now_playing_playlist.png)
+
+> 📸 **[View all screenshots and detailed feature documentation →](images/README.md)**
+
 ## ⚠️ Setup Required
 
 **Before building**: You need SoundCloud API credentials. See [CREDENTIALS_SETUP.md](CREDENTIALS_SETUP.md) for instructions.

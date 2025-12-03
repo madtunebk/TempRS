@@ -34,6 +34,7 @@ egui-wgpu = "0.33"
 bytemuck = { version = "1.14", features = ["derive"] }
 arboard = "3.4"
 rustfft = "6.2"
+dotenvy = "0.15.7"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55.0"
@@ -53,3 +54,6 @@ path = "testunits/shader_test.rs"
 [[bin]]
 name = "shadertoy_converter"
 path = "testunits/shadertoy_converter.rs"
+
+[build-dependencies]
+dotenvy = "0.15"

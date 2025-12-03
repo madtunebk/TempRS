@@ -16,6 +16,15 @@ pub const SOUNDCLOUD_CLIENT_ID: &str = "YOUR_CLIENT_ID_HERE";
 pub const SOUNDCLOUD_CLIENT_SECRET: &str = "YOUR_CLIENT_SECRET_HERE";
 ```
 
+## ⬇️ Download
+
+Pre-built binaries (require your own SoundCloud credentials):
+
+- **Linux (x86_64)**: [`released/TempRS`](released/TempRS)
+- **Windows (x86_64)**: [`released/TempRS.exe`](released/TempRS.exe)
+
+> ⚠️ **Note**: Binaries contain dummy credentials. You must replace them in `src/main.rs` and rebuild, or use the binaries as-is if you have working credentials.
+
 ## Features
 
 ✅ **Progressive Audio Streaming**

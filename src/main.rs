@@ -16,11 +16,12 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const APP_NAME: &str = "TempRS";
 const APP_DESCRIPTION: &str = "SoundCloud Desktop Player";
 
-// SoundCloud OAuth Credentials
-// ⚠️ THESE ARE DUMMY/PLACEHOLDER VALUES - Replace with your own credentials
-// See CREDENTIALS_SETUP.md for instructions on getting working credentials
-pub const SOUNDCLOUD_CLIENT_ID: &str = "YOUR_SOUNDCLOUD_CLIENT_ID_HERE";
-pub const SOUNDCLOUD_CLIENT_SECRET: &str = "YOUR_SOUNDCLOUD_CLIENT_SECRET_HERE";
+// SoundCloud OAuth Credentials - loaded from .env file at compile time
+// Create .env file from .env.example and add your credentials
+// See CREDENTIALS_SETUP.md for instructions on getting credentials
+pub const SOUNDCLOUD_CLIENT_ID: &str = env!("SOUNDCLOUD_CLIENT_ID");
+pub const SOUNDCLOUD_CLIENT_SECRET: &str = env!("SOUNDCLOUD_CLIENT_SECRET");
+>>>>>>> 02c0d81 (feat: use .env file for credentials (proper security))
 
 const APP_HEIGHT: f32 = 935.0;
 const APP_WIDTH: f32 = 1480.0;

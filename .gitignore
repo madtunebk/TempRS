@@ -47,3 +47,9 @@ src/main.rs  # Contains OAuth credentials - use dummy values for public repo
 *.swp
 target/
 GIT_REMOTES.txt
+
+# === Ignore creds accesible  ===
+
+# === Prebuild backups and testing ===
+prebuild_backups/
+.env

@@ -45,3 +45,4 @@ oauth/*
 *.tmp
 *.swp
 target/
+GIT_REMOTES.txt

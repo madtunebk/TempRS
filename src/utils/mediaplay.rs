@@ -338,121 +338,151 @@ impl AudioPlayer {
         let bytes_per_second = 16_000;
         let byte_offset = position.as_secs() * bytes_per_second;
 
-        // Get redirect Location header without following
-        let client = crate::utils::http::no_redirect_client();
-        log::info!("[Seeking] Getting redirect Location header...");
-        let response = client
-            .get(url)
-            .header("Authorization", format!("OAuth {}", token))
-            .send()
-            .await?;
-        
-        // Extract Location header
-        let actual_url = response
-            .headers()
-            .get("location")
-            .ok_or("No Location header in redirect")?
-            .to_str()?
-            .to_string();
-        
-        log::info!("[Seeking] Got actual CDN URL from Location header");
-
-        // Create new streaming components with dual FFT channels
-        let (sample_tx, sample_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
-        let (fft_download_tx, fft_download_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
-        let (fft_playback_tx, fft_playback_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
-        let finished = Arc::new(Mutex::new(false));
-        let finished_clone = Arc::clone(&finished);
-        
-        // Spawn new streaming thread from offset using actual URL
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                if let Err(e) = stream_from_actual_url(&actual_url, byte_offset, sample_tx, fft_download_tx, finished_clone).await {
-                    log::error!("[AudioPlayer] Seek streaming error: {}", e);
-                }
-            });
-        });
-
-        // Wait briefly for buffering
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        let sample_rate = 44100;
-        let channels = 2;
-        
-        // Create FFT analyzer for seek (same as initial playback)
-        let analyzer = crate::utils::audio_analyzer::AudioAnalyzer::new(
-            Arc::clone(&bass_energy),
-            Arc::clone(&mid_energy),
-            Arc::clone(&high_energy),
-        );
-        
-        let analyzer_arc = Arc::new(Mutex::new(analyzer));
-        
-        // Spawn dedicated FFT processing thread for seek (merges download + playback)
-        let fft_analyzer = Arc::clone(&analyzer_arc);
-        std::thread::spawn(move || {
-            log::info!("[FFT] Seek FFT processing thread started");
+        // Retry seek up to 3 times (CDN can be flaky)
+        let mut last_error = None;
+        for attempt in 1..=3 {
+            log::info!("[Seeking] Attempt {}/3 to seek to {:?}", attempt, position);
             
-            // Process samples from both download and playback channels
-            loop {
-                let mut got_sample = false;
-                
-                // Try download channel first (during buffering)
-                match fft_download_rx.try_recv() {
-                    Ok(samples) => {
-                        if let Ok(mut a) = fft_analyzer.lock() {
-                            a.process_samples(&samples);
-                        }
-                        got_sample = true;
+            // Get redirect Location header without following
+            let client = crate::utils::http::no_redirect_client();
+            log::info!("[Seeking] Getting redirect Location header...");
+            let response = match client
+                .get(url)
+                .header("Authorization", format!("OAuth {}", token))
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    log::warn!("[Seeking] Failed to get redirect on attempt {}/3: {}", attempt, e);
+                    last_error = Some(e.into());
+                    if attempt < 3 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempt as u64)).await;
                     }
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                        // Download channel closed, that's normal
-                    }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => {
-                        // No data yet
-                    }
+                    continue;
                 }
-                
-                // Try playback channel (during playback)
-                match fft_playback_rx.try_recv() {
-                    Ok(samples) => {
-                        if let Ok(mut a) = fft_analyzer.lock() {
-                            a.process_samples(&samples);
-                        }
-                        got_sample = true;
+            };
+            
+            // Extract Location header
+            let actual_url = match response
+                .headers()
+                .get("location")
+                .and_then(|h| h.to_str().ok())
+            {
+                Some(u) => u.to_string(),
+                None => {
+                    log::warn!("[Seeking] No Location header on attempt {}/3", attempt);
+                    last_error = Some("No Location header in redirect".into());
+                    if attempt < 3 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempt as u64)).await;
                     }
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                        // Playback channel closed - track ended
-                        log::info!("[FFT] Seek playback channel disconnected, ending FFT processing");
-                        break;
-                    }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => {
-                        // No data yet
-                    }
+                    continue;
                 }
-                
-                // If no samples from either channel, sleep briefly
-                if !got_sample {
-                    std::thread::sleep(Duration::from_millis(5));
-                }
-            }
-            log::info!("[FFT] Seek FFT processing thread terminated");
-        });
-        
-        let source = StreamingSource::new(sample_rx, sample_rate, channels, finished, Some(fft_playback_tx));
-        
-        let new_sink = Sink::try_new(&self.stream_handle)?;
-        new_sink.append(source);
-        new_sink.set_volume(self.current_volume);
+            };
+            
+            log::info!("[Seeking] Got actual CDN URL from Location header");
 
-        self.sink = new_sink;
-        self.start_position = position;
-        self.start_time = Instant::now();
-        self.paused_at = None;
+            // Create new streaming components with dual FFT channels
+            let (sample_tx, sample_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+            let (fft_download_tx, fft_download_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+            let (fft_playback_tx, fft_playback_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+            let finished = Arc::new(Mutex::new(false));
+            let finished_clone = Arc::clone(&finished);
+            
+            // Spawn new streaming thread from offset using actual URL
+            let actual_url_clone = actual_url.clone();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    if let Err(e) = stream_from_actual_url(&actual_url_clone, byte_offset, sample_tx, fft_download_tx, finished_clone).await {
+                        log::error!("[AudioPlayer] Seek streaming error: {}", e);
+                    }
+                });
+            });
 
-        log::info!("[AudioPlayer] Seek completed, streaming from {:?}", position);
-        Ok(())
+            // Wait briefly for buffering
+            std::thread::sleep(std::time::Duration::from_millis(100));
+
+            let sample_rate = 44100;
+            let channels = 2;
+        
+            // Create FFT analyzer for seek (same as initial playback)
+            let analyzer = crate::utils::audio_analyzer::AudioAnalyzer::new(
+                Arc::clone(&bass_energy),
+                Arc::clone(&mid_energy),
+                Arc::clone(&high_energy),
+            );
+            
+            let analyzer_arc = Arc::new(Mutex::new(analyzer));
+            
+            // Spawn dedicated FFT processing thread for seek (merges download + playback)
+            let fft_analyzer = Arc::clone(&analyzer_arc);
+            std::thread::spawn(move || {
+                log::info!("[FFT] Seek FFT processing thread started");
+                
+                // Process samples from both download and playback channels
+                loop {
+                    let mut got_sample = false;
+                    
+                    // Try download channel first (during buffering)
+                    match fft_download_rx.try_recv() {
+                        Ok(samples) => {
+                            if let Ok(mut a) = fft_analyzer.lock() {
+                                a.process_samples(&samples);
+                            }
+                            got_sample = true;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            // Download channel closed, that's normal
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            // No data yet
+                        }
+                    }
+                    
+                    // Try playback channel (during playback)
+                    match fft_playback_rx.try_recv() {
+                        Ok(samples) => {
+                            if let Ok(mut a) = fft_analyzer.lock() {
+                                a.process_samples(&samples);
+                            }
+                            got_sample = true;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            // Playback channel closed - track ended
+                            log::info!("[FFT] Seek playback channel disconnected, ending FFT processing");
+                            break;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            // No data yet
+                        }
+                    }
+                    
+                    // If no samples from either channel, sleep briefly
+                    if !got_sample {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                }
+                log::info!("[FFT] Seek FFT processing thread terminated");
+            });
+            
+            let source = StreamingSource::new(sample_rx, sample_rate, channels, finished, Some(fft_playback_tx));
+            
+            let new_sink = Sink::try_new(&self.stream_handle)?;
+            new_sink.append(source);
+            new_sink.set_volume(self.current_volume);
+
+            self.sink = new_sink;
+            self.start_position = position;
+            self.start_time = Instant::now();
+            self.paused_at = None;
+
+            log::info!("[AudioPlayer] Seek completed successfully on attempt {}, streaming from {:?}", attempt, position);
+            return Ok(());
+        }
+        
+        // All retries failed
+        Err(last_error.unwrap_or_else(|| "Seek failed after 3 attempts".into()))
     }
 }
 
@@ -464,66 +494,134 @@ async fn stream_from_actual_url(
     fft_tx: Sender<Vec<i16>>,
     finished: Arc<Mutex<bool>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let client = crate::utils::http::client();
+    let client = crate::utils::http::streaming_client();
     
     log::info!("[Streaming] Seeking to byte offset {} on CDN URL", byte_offset);
-    let response = client
-        .get(actual_url)
-        .header("Range", format!("bytes={}-", byte_offset))
-        .send()
-        .await?;
+    
+    // Retry seek requests up to 3 times
+    let mut response = None;
+    for attempt in 1..=3 {
+        match client
+            .get(actual_url)
+            .header("Range", format!("bytes={}-", byte_offset))
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() || status.as_u16() == 206 {  // 206 = Partial Content
+                    response = Some(resp);
+                    break;
+                } else {
+                    log::warn!("[Streaming] Seek CDN returned status {} on attempt {}/3", status, attempt);
+                    if attempt < 3 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempt as u64)).await;
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("[Streaming] Seek request failed on attempt {}/3: {}", attempt, e);
+                if attempt < 3 {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempt as u64)).await;
+                }
+            }
+        }
+    }
+    
+    let response = response.ok_or("Seek CDN request failed after 3 attempts")?;
     
     let mut mp3_buffer = Vec::new();
-    let mut _total_downloaded = byte_offset;
-    let mut total_frames_sent = 0;
+    let mut total_downloaded = byte_offset;
+    let mut buffer_frames_sent = 0;
     
     use futures_util::StreamExt;
     
     let mut stream = response.bytes_stream();
     
     while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result?;
-        mp3_buffer.extend_from_slice(&chunk);
-        _total_downloaded += chunk.len() as u64;
-        
-        // Decode all frames but only send new ones
-        let mut decoder = Mp3Decoder::new(&mp3_buffer[..]);
-        let mut frame_index = 0;
-        
-        loop {
-            match decoder.next_frame() {
-                Ok(Frame { data, .. }) => {
-                    if frame_index >= total_frames_sent {
-                        // Send to audio playback
-                        if sample_tx.send(data.clone()).is_err() {
-                            log::debug!("[Streaming] Seek playback stopped");
-                            *finished.lock().unwrap() = true;
-                            return Ok(());
+        match chunk_result {
+            Ok(chunk) => {
+                mp3_buffer.extend_from_slice(&chunk);
+                total_downloaded += chunk.len() as u64;
+                
+                // Decode all frames but only send new ones
+                let mut decoder = Mp3Decoder::new(&mp3_buffer[..]);
+                let mut frame_index = 0;
+                
+                loop {
+                    match decoder.next_frame() {
+                        Ok(Frame { data, .. }) => {
+                            if frame_index >= buffer_frames_sent {
+                                // Send to audio playback
+                                if sample_tx.send(data.clone()).is_err() {
+                                    log::debug!("[Streaming] Seek playback stopped");
+                                    *finished.lock().unwrap() = true;
+                                    return Ok(());
+                                }
+                                // Send to FFT (ignore errors - FFT is optional)
+                                let _ = fft_tx.send(data);
+                                buffer_frames_sent = frame_index + 1;
+                            }
+                            frame_index += 1;
                         }
-                        // Send to FFT (ignore errors - FFT is optional)
-                        let _ = fft_tx.send(data);
-                        total_frames_sent += 1;
+                        Err(_) => break,
                     }
-                    frame_index += 1;
                 }
-                Err(_) => break,
+                
+                // Trim buffer if too large
+                if mp3_buffer.len() > 5 * 1024 * 1024 {
+                    let keep_size = 2 * 1024 * 1024;
+                    let trim_amount = mp3_buffer.len() - keep_size;
+                    mp3_buffer.drain(0..trim_amount);
+                    buffer_frames_sent = 0;  // Reset - new buffer state
+                }
             }
-        }
-        
-        // Trim buffer if too large
-        if mp3_buffer.len() > 5 * 1024 * 1024 {
-            let keep_size = 2 * 1024 * 1024;
-            let trim_amount = mp3_buffer.len() - keep_size;
-            mp3_buffer.drain(0..trim_amount);
-            total_frames_sent = 0;
+            Err(e) => {
+                // Stream error mid-download - try to resume from current position
+                log::warn!("[Streaming] Seek stream error at {} bytes: {} - attempting resume", total_downloaded, e);
+                
+                // Try to resume up to 2 times
+                let mut resumed = false;
+                for resume_attempt in 1..=2 {
+                    log::info!("[Streaming] Resume attempt {}/2 from byte {}", resume_attempt, total_downloaded);
+                    
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    
+                    match client
+                        .get(actual_url)
+                        .header("Range", format!("bytes={}-", total_downloaded))
+                        .send()
+                        .await
+                    {
+                        Ok(resume_response) => {
+                            if resume_response.status().is_success() || resume_response.status().as_u16() == 206 {
+                                log::info!("[Streaming] Successfully resumed stream from byte {}", total_downloaded);
+                                stream = resume_response.bytes_stream();
+                                resumed = true;
+                                break;
+                            } else {
+                                log::warn!("[Streaming] Resume got status {}", resume_response.status());
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("[Streaming] Resume attempt {} failed: {}", resume_attempt, e);
+                        }
+                    }
+                }
+                
+                if !resumed {
+                    log::error!("[Streaming] Failed to resume stream after 2 attempts, giving up");
+                    return Err(format!("Stream failed and could not resume from byte {}", total_downloaded).into());
+                }
+            }
         }
     }
     
-    // Decode remaining
+    // Decode remaining frames from final buffer
     let mut decoder = Mp3Decoder::new(&mp3_buffer[..]);
     let mut frame_index = 0;
     while let Ok(Frame { data, .. }) = decoder.next_frame() {
-        if frame_index >= total_frames_sent {
+        if frame_index >= buffer_frames_sent {
             let _ = sample_tx.send(data.clone());
             let _ = fft_tx.send(data);
         }
@@ -562,12 +660,36 @@ async fn stream_audio(
     
     log::info!("[Streaming] Streaming from actual URL: {}", actual_url);
     
-    // Now stream from the actual CDN URL
-    let streaming_client = crate::utils::http::client();
-    let streaming_response = streaming_client
-        .get(&actual_url)
-        .send()
-        .await?;
+    // Now stream from the actual CDN URL with retry logic
+    let streaming_client = crate::utils::http::streaming_client();
+    let mut streaming_response = None;
+    
+    // Retry up to 3 times on CDN errors
+    for attempt in 1..=3 {
+        match streaming_client.get(&actual_url).send().await {
+            Ok(response) => {
+                let status = response.status();
+                if status.is_success() {
+                    streaming_response = Some(response);
+                    break;
+                } else {
+                    log::warn!("[Streaming] CDN returned status {} on attempt {}/3", status, attempt);
+                    if attempt < 3 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempt as u64)).await;
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("[Streaming] CDN request failed on attempt {}/3: {}", attempt, e);
+                if attempt < 3 {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempt as u64)).await;
+                }
+            }
+        }
+    }
+    
+    let streaming_response = streaming_response
+        .ok_or("CDN failed after 3 attempts")?;
     
     // Get expected file size from Content-Length header (if available)
     let expected_size = streaming_response
@@ -584,62 +706,102 @@ async fn stream_audio(
     
     let mut mp3_buffer = Vec::new();
     let mut total_downloaded = 0;
-    let mut total_frames_sent = 0; // Track frames we've already sent
+    let mut buffer_frames_sent = 0; // Track frames sent from CURRENT buffer state
     
     use futures_util::StreamExt;
     
     let mut stream = streaming_response.bytes_stream();
     
     while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result?;
-        mp3_buffer.extend_from_slice(&chunk);
-        total_downloaded += chunk.len();
-        
-        // Decode all frames but only send new ones (original working method)
-        let mut decoder = Mp3Decoder::new(&mp3_buffer[..]);
-        let mut frame_index = 0;
-        
-        loop {
-            match decoder.next_frame() {
-                Ok(Frame { data, .. }) => {
-                    // Only send frames we haven't sent yet
-                    if frame_index >= total_frames_sent {
-                        // Send to audio playback
-                        if sample_tx.send(data.clone()).is_err() {
-                            log::info!("[Streaming] Playback stopped by user, downloaded {} KB total", total_downloaded / 1024);
-                            *finished.lock().unwrap() = true;
-                            return Ok(());
+        match chunk_result {
+            Ok(chunk) => {
+                mp3_buffer.extend_from_slice(&chunk);
+                total_downloaded += chunk.len();
+                
+                // Decode all frames but only send new ones (original working method)
+                let mut decoder = Mp3Decoder::new(&mp3_buffer[..]);
+                let mut frame_index = 0;
+                
+                loop {
+                    match decoder.next_frame() {
+                        Ok(Frame { data, .. }) => {
+                            // Only send frames we haven't sent yet from current buffer
+                            if frame_index >= buffer_frames_sent {
+                                // Send to audio playback
+                                if sample_tx.send(data.clone()).is_err() {
+                                    log::info!("[Streaming] Playback stopped by user, downloaded {} KB total", total_downloaded / 1024);
+                                    *finished.lock().unwrap() = true;
+                                    return Ok(());
+                                }
+                                // Send to FFT (ignore errors - FFT is optional)
+                                let _ = fft_tx.send(data);
+                                buffer_frames_sent = frame_index + 1;
+                            }
+                            frame_index += 1;
                         }
-                        // Send to FFT (ignore errors - FFT is optional)
-                        let _ = fft_tx.send(data);
-                        total_frames_sent += 1;
+                        Err(_) => {
+                            // No more complete frames available
+                            break;
+                        }
                     }
-                    frame_index += 1;
                 }
-                Err(_) => {
-                    // No more complete frames available
-                    break;
+                
+                // Prevent excessive memory usage - trim old data if buffer > 5MB
+                if mp3_buffer.len() > 5 * 1024 * 1024 {
+                    // Keep last 2MB for frame continuity
+                    let keep_size = 2 * 1024 * 1024;
+                    let trim_amount = mp3_buffer.len() - keep_size;
+                    mp3_buffer.drain(0..trim_amount);
+                    // Reset counter - we're working with a new buffer now
+                    buffer_frames_sent = 0;
+                    log::debug!("[Streaming] Trimmed {} KB, buffer now {} KB, reset frame counter", trim_amount / 1024, mp3_buffer.len() / 1024);
+                }
+
+                if total_downloaded % (512 * 1024) == 0 {
+                    log::debug!("[Streaming] Downloaded {} KB, buffer {} KB, sent {} frames from buffer...", 
+                        total_downloaded / 1024, mp3_buffer.len() / 1024, buffer_frames_sent);
+                }
+            }
+            Err(e) => {
+                // Stream error mid-download - try to resume from current position
+                log::warn!("[Streaming] Stream error at {} KB: {} - attempting resume", total_downloaded / 1024, e);
+                
+                // Try to resume up to 2 times
+                let mut resumed = false;
+                for resume_attempt in 1..=2 {
+                    log::info!("[Streaming] Resume attempt {}/2 from byte {}", resume_attempt, total_downloaded);
+                    
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    
+                    match streaming_client
+                        .get(&actual_url)
+                        .header("Range", format!("bytes={}-", total_downloaded))
+                        .send()
+                        .await
+                    {
+                        Ok(resume_response) => {
+                            if resume_response.status().is_success() || resume_response.status().as_u16() == 206 {
+                                log::info!("[Streaming] Successfully resumed stream from byte {}", total_downloaded);
+                                stream = resume_response.bytes_stream();
+                                resumed = true;
+                                break;
+                            } else {
+                                log::warn!("[Streaming] Resume got status {}", resume_response.status());
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("[Streaming] Resume attempt {} failed: {}", resume_attempt, e);
+                        }
+                    }
+                }
+                
+                if !resumed {
+                    log::error!("[Streaming] Failed to resume stream after 2 attempts at {} KB, giving up", total_downloaded / 1024);
+                    return Err(format!("Stream failed and could not resume from byte {}", total_downloaded).into());
                 }
             }
         }
-        
-        // Prevent excessive memory usage - trim old data if buffer > 5MB
-        if mp3_buffer.len() > 5 * 1024 * 1024 {
-            // Keep last 2MB for frame continuity
-            let keep_size = 2 * 1024 * 1024;
-            let trim_amount = mp3_buffer.len() - keep_size;
-            mp3_buffer.drain(0..trim_amount);
-            total_frames_sent = 0;  // Reset counter since we trimmed
-            log::debug!("[Streaming] Trimmed buffer to {} KB", mp3_buffer.len() / 1024);
-        }
-        
-        if total_downloaded % (512 * 1024) == 0 {
-            log::debug!("[Streaming] Downloaded {} KB, buffer {} KB, sent {} frames...", 
-                total_downloaded / 1024, mp3_buffer.len() / 1024, total_frames_sent);
-        }
-    }
-    
-    // Stream complete - verify we got all the data
+    }    // Stream complete - verify we got all the data
     if let Some(expected) = expected_size {
         let download_percent = (total_downloaded as f32 / expected as f32) * 100.0;
         if download_percent < 95.0 {
@@ -661,11 +823,11 @@ async fn stream_audio(
         log::info!("[Streaming] Stream complete (no size validation available): {} KB total", total_downloaded / 1024);
     }
     
-    // Decode any remaining frames we haven't sent
+    // Decode any remaining frames we haven't sent from final buffer
     let mut decoder = Mp3Decoder::new(&mp3_buffer[..]);
     let mut frame_index = 0;
     while let Ok(Frame { data, .. }) = decoder.next_frame() {
-        if frame_index >= total_frames_sent {
+        if frame_index >= buffer_frames_sent {
             let _ = sample_tx.send(data.clone());
             let _ = fft_tx.send(data);
         }

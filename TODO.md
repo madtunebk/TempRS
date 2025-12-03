@@ -222,3 +222,44 @@ pub struct UserPlaylistsResponse {
 - Related Content: 30 mins (already have API)
 
 **Total: ~8-10 hours of work**
+
+---
+
+## Future Ideas - Extract Reusable Crates 📦
+
+Potential standalone crates to extract from TempRS:
+
+1. **`rodio-streaming`** - Progressive MP3 streaming with seeking
+   - StreamingSource iterator for rodio
+   - Buffer management (5MB limit with trimming)
+   - Byte offset seeking support
+   - CDN retry logic with exponential backoff
+   - Use case: Any audio player needing progressive streaming
+
+2. **`audio-fft-analyzer`** - Real-time FFT audio analysis
+   - Dual-channel architecture (download + playback streams)
+   - Bass/mid/high frequency extraction
+   - Thread-safe sample processing with rustfft
+   - Use case: Visualizers, DJ apps, audio analysis tools
+
+3. **`soundcloud-rs`** - SoundCloud API client
+   - OAuth with PKCE flow
+   - Tracks, playlists, likes, search, users endpoints
+   - Token refresh and retry logic
+   - Use case: Any SoundCloud integration
+
+4. **`secure-token-store`** - Encrypted credential storage
+   - AES-256-GCM encryption with machine fingerprint keys
+   - SQLite backend for persistence
+   - Cross-platform machine fingerprinting
+   - Use case: Desktop apps needing secure token storage
+
+5. **`hybrid-cache`** - Filesystem + SQLite caching system
+   - SHA256-based file naming
+   - Metadata tracking with SQLite
+   - Auto-cleanup by age and size limits
+   - Placeholder support to prevent retry loops
+   - Use case: Any app caching remote resources (images, audio, etc.)
+
+Benefits: Portfolio boost, help other Rust devs, reuse in future projects
+

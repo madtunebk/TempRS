@@ -6,7 +6,7 @@ pub static CLIENT: Lazy<Client> = Lazy::new(|| {
     Client::builder()
         .pool_max_idle_per_host(8)
         .tcp_keepalive(std::time::Duration::from_secs(60))
-        .timeout(Duration::from_secs(30)) // 30 second timeout
+        .timeout(Duration::from_secs(30)) // 30 second timeout for API requests
         .build()
         .expect("failed to build reqwest client")
 });
@@ -22,12 +22,27 @@ pub static NO_REDIRECT_CLIENT: Lazy<Client> = Lazy::new(|| {
         .expect("failed to build no-redirect client")
 });
 
+// Client for streaming audio - no timeout, only read timeout per chunk
+pub static STREAMING_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .pool_max_idle_per_host(2)
+        .tcp_keepalive(std::time::Duration::from_secs(60))
+        .timeout(Duration::from_secs(600)) // 10 minute total timeout (for long tracks)
+        .read_timeout(Duration::from_secs(30)) // 30s timeout per chunk read
+        .build()
+        .expect("failed to build streaming client")
+});
+
 pub fn client() -> &'static Client {
     &CLIENT
 }
 
 pub fn no_redirect_client() -> &'static Client {
     &NO_REDIRECT_CLIENT
+}
+
+pub fn streaming_client() -> &'static Client {
+    &STREAMING_CLIENT
 }
 
 /// Check if an HTTP status code is retryable (transient error)

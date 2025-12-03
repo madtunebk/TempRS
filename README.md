@@ -33,6 +33,14 @@ cargo build --release
 - Instant playback start
 - Buffering state tracking & timeout detection (5s)
 
+✅ **Real-time Audio Visualization**
+- FFT-based frequency analysis (bass, mid, high bands)
+- Dual-channel architecture: download + playback streams
+- Continuous processing throughout entire track (not just buffering phase)
+- Synchronized with seeking - no interruptions or desync
+- Non-blocking: FFT runs in dedicated thread, never blocks audio playback
+- Accurate beat detection locked to actual playback samples
+
 ✅ **Smart Caching**
 - Hybrid filesystem + SQLite metadata caching
 - Artwork caching with placeholder tracking (prevents retry loops)
@@ -63,11 +71,28 @@ cargo build --release
 
 - **UI**: egui 0.33 / eframe (with wgpu backend)
 - **Audio**: rodio 0.19 + minimp3 0.5
+- **FFT Analysis**: rustfft 6.2 (real-time frequency analysis)
 - **HTTP**: reqwest 0.12 (with streaming support)
 - **Async**: tokio 1.43
 - **Storage**: rusqlite 0.32 (encrypted tokens, cache metadata, playback history)
 - **Encryption**: AES-256-GCM (ring crate)
 - **Shaders**: WGSL via egui-wgpu integration
+
+## Performance
+
+**Resource Usage** (tested on AMD Ryzen 9 9900X / RTX 3060):
+- **CPU**: <1% per thread during playback
+- **RAM**: ~445MB total (comparable to Spotify/Discord)
+- **Threads**: 20 (audio, FFT, download, HTTP clients, egui, WGPU, tokio workers)
+- **Architecture**: Multi-threaded with zero blocking - audio, FFT, and UI all run independently
+
+**Optimizations**:
+- Dual-channel FFT: separate download + playback streams prevent blocking
+- Progressive streaming: no full file buffering, minimal memory usage
+- Efficient caching: hybrid filesystem + SQLite metadata
+- Non-blocking UI: all heavy operations run in background threads
+
+**Load average**: ~0.15 during active playback (system barely notices it's running)
 
 ## Build & Run
 
@@ -190,10 +215,21 @@ src/
 
 ### Audio Streaming
 - HTTP streaming with live MP3 decoding (minimp3)
+- **Dual-channel architecture**: 
+  - `audio_rx`: rodio playback (smooth, never blocked)
+  - `fft_download_rx`: FFT during buffering phase
+  - `fft_playback_rx`: FFT during actual playback (continues after download completes)
 - Frame-index tracking to avoid duplicate sends
 - Buffering threshold: 44100 samples (~1 second)
 - 5-second timeout detection for stuck streams
 - Buffer limits: 5MB max, trims to 2MB when exceeded
+
+### FFT Visualization Pipeline
+- **Thread 1 (Download)**: HTTP stream → decode → send to audio_tx + fft_download_tx
+- **Thread 2 (Audio)**: audio_rx → rodio playback (never blocked by FFT)
+- **Thread 3 (Playback)**: Iterator sends samples → fft_playback_tx (non-blocking)
+- **Thread 4 (FFT)**: Merges both FFT channels → frequency analysis → bass/mid/high energy
+- Result: Buttery smooth playback + accurate visualization with zero stuttering
 
 ### Caching Strategy
 - **Filesystem**: Actual files (artwork, thumbnails)

@@ -35,10 +35,12 @@ struct StreamingSource {
     buffering: bool,  // Track if we're still buffering initial data
     samples_received: usize,  // Count total samples for stuck detection
     last_sample_time: Instant,  // Detect stream timeout
+    fft_tx: Option<Sender<Vec<i16>>>,  // Send samples to FFT as they're played
+    fft_buffer: Vec<i16>,  // Buffer for sending to FFT
 }
 
 impl StreamingSource {
-    fn new(sample_rx: Receiver<Vec<i16>>, sample_rate: u32, channels: u16, finished: Arc<Mutex<bool>>) -> Self {
+    fn new(sample_rx: Receiver<Vec<i16>>, sample_rate: u32, channels: u16, finished: Arc<Mutex<bool>>, fft_tx: Option<Sender<Vec<i16>>>) -> Self {
         Self {
             sample_rx,
             current_samples: Vec::new(),
@@ -49,6 +51,8 @@ impl StreamingSource {
             buffering: true,
             samples_received: 0,
             last_sample_time: Instant::now(),
+            fft_tx,
+            fft_buffer: Vec::with_capacity(2048),
         }
     }
 }
@@ -61,6 +65,17 @@ impl Iterator for StreamingSource {
         if self.sample_index < self.current_samples.len() {
             let sample = self.current_samples[self.sample_index];
             self.sample_index += 1;
+            
+            // Send to FFT as samples are being played
+            if let Some(tx) = &self.fft_tx {
+                self.fft_buffer.push(sample);
+                // Send in chunks of ~1152 samples (typical MP3 frame size)
+                if self.fft_buffer.len() >= 1152 {
+                    let _ = tx.send(self.fft_buffer.clone());
+                    self.fft_buffer.clear();
+                }
+            }
+            
             return Some(sample);
         }
 
@@ -142,7 +157,8 @@ impl AudioPlayer {
         
         // Create dual channels - one for audio playback, one for FFT
         let (sample_tx, sample_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
-        let (fft_tx, fft_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+        let (fft_download_tx, fft_download_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+        let (fft_playback_tx, fft_playback_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
         
         let finished = Arc::new(Mutex::new(false));
         let finished_clone = Arc::clone(&finished);
@@ -151,11 +167,11 @@ impl AudioPlayer {
         let token_owned = token.to_string();
         let cache_key = format!("audio_{}", track_id);
         
-        // Spawn streaming thread that sends to BOTH channels
+        // Spawn streaming thread that sends to audio + FFT download channel
         let stream_thread = std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async {
-                if let Err(e) = stream_audio(&url_owned, &token_owned, &cache_key, sample_tx, fft_tx, finished_clone).await {
+                if let Err(e) = stream_audio(&url_owned, &token_owned, &cache_key, sample_tx, fft_download_tx, finished_clone).await {
                     log::error!("[AudioPlayer] Streaming error: {}", e);
                 }
             });
@@ -176,20 +192,63 @@ impl AudioPlayer {
         
         let analyzer_arc = Arc::new(Mutex::new(analyzer));
         
-        // Spawn dedicated FFT processing thread (separate from audio playback)
+        // Spawn dedicated FFT processing thread (merges download + playback samples)
         let fft_analyzer = Arc::clone(&analyzer_arc);
         std::thread::spawn(move || {
             log::info!("[FFT] Dedicated FFT processing thread started");
-            while let Ok(samples) = fft_rx.recv() {
-                if let Ok(mut a) = fft_analyzer.lock() {
-                    a.process_samples(&samples);
+            let mut sample_count = 0usize;
+            
+            // Process samples from both download and playback channels
+            loop {
+                let mut got_sample = false;
+                
+                // Try download channel first (during buffering)
+                match fft_download_rx.try_recv() {
+                    Ok(samples) => {
+                        sample_count += samples.len();
+                        if let Ok(mut a) = fft_analyzer.lock() {
+                            a.process_samples(&samples);
+                        }
+                        got_sample = true;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        // Download channel closed, that's normal
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        // No data yet
+                    }
+                }
+                
+                // Try playback channel (during playback)
+                match fft_playback_rx.try_recv() {
+                    Ok(samples) => {
+                        sample_count += samples.len();
+                        if let Ok(mut a) = fft_analyzer.lock() {
+                            a.process_samples(&samples);
+                        }
+                        got_sample = true;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        // Playback channel closed - this means track ended
+                        log::info!("[FFT] Playback channel disconnected, ending FFT processing");
+                        break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        // No data yet
+                    }
+                }
+                
+                // If no samples from either channel, sleep briefly
+                if !got_sample {
+                    std::thread::sleep(Duration::from_millis(5));
                 }
             }
-            log::info!("[FFT] FFT processing thread terminated");
+            
+            log::info!("[FFT] FFT processing thread terminated, processed ~{} samples", sample_count);
         });
         
-        // Audio source only handles playback (no FFT blocking)
-        let source = StreamingSource::new(sample_rx, sample_rate, channels, finished);
+        // Audio source sends samples to FFT as they're played (continues after download ends)
+        let source = StreamingSource::new(sample_rx, sample_rate, channels, finished, Some(fft_playback_tx));
         
         let sink = Sink::try_new(&stream_handle)?;
         sink.append(source);
@@ -266,6 +325,9 @@ impl AudioPlayer {
         position: Duration,
         url: &str,
         token: &str,
+        bass_energy: Arc<Mutex<f32>>,
+        mid_energy: Arc<Mutex<f32>>,
+        high_energy: Arc<Mutex<f32>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("[AudioPlayer] Seeking to {:?} by restarting stream...", position);
 
@@ -295,9 +357,10 @@ impl AudioPlayer {
         
         log::info!("[Seeking] Got actual CDN URL from Location header");
 
-        // Create new streaming components
+        // Create new streaming components with dual FFT channels
         let (sample_tx, sample_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
-        let (fft_tx, fft_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+        let (fft_download_tx, fft_download_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+        let (fft_playback_tx, fft_playback_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
         let finished = Arc::new(Mutex::new(false));
         let finished_clone = Arc::clone(&finished);
         
@@ -305,7 +368,7 @@ impl AudioPlayer {
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async {
-                if let Err(e) = stream_from_actual_url(&actual_url, byte_offset, sample_tx, fft_tx, finished_clone).await {
+                if let Err(e) = stream_from_actual_url(&actual_url, byte_offset, sample_tx, fft_download_tx, finished_clone).await {
                     log::error!("[AudioPlayer] Seek streaming error: {}", e);
                 }
             });
@@ -317,16 +380,67 @@ impl AudioPlayer {
         let sample_rate = 44100;
         let channels = 2;
         
-        // Spawn dedicated FFT thread for seek
+        // Create FFT analyzer for seek (same as initial playback)
+        let analyzer = crate::utils::audio_analyzer::AudioAnalyzer::new(
+            Arc::clone(&bass_energy),
+            Arc::clone(&mid_energy),
+            Arc::clone(&high_energy),
+        );
+        
+        let analyzer_arc = Arc::new(Mutex::new(analyzer));
+        
+        // Spawn dedicated FFT processing thread for seek (merges download + playback)
+        let fft_analyzer = Arc::clone(&analyzer_arc);
         std::thread::spawn(move || {
-            while let Ok(samples) = fft_rx.recv() {
-                // FFT processing happens here in dedicated thread
-                // For now just drain to prevent channel blocking
-                drop(samples);
+            log::info!("[FFT] Seek FFT processing thread started");
+            
+            // Process samples from both download and playback channels
+            loop {
+                let mut got_sample = false;
+                
+                // Try download channel first (during buffering)
+                match fft_download_rx.try_recv() {
+                    Ok(samples) => {
+                        if let Ok(mut a) = fft_analyzer.lock() {
+                            a.process_samples(&samples);
+                        }
+                        got_sample = true;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        // Download channel closed, that's normal
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        // No data yet
+                    }
+                }
+                
+                // Try playback channel (during playback)
+                match fft_playback_rx.try_recv() {
+                    Ok(samples) => {
+                        if let Ok(mut a) = fft_analyzer.lock() {
+                            a.process_samples(&samples);
+                        }
+                        got_sample = true;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        // Playback channel closed - track ended
+                        log::info!("[FFT] Seek playback channel disconnected, ending FFT processing");
+                        break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        // No data yet
+                    }
+                }
+                
+                // If no samples from either channel, sleep briefly
+                if !got_sample {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
             }
+            log::info!("[FFT] Seek FFT processing thread terminated");
         });
         
-        let source = StreamingSource::new(sample_rx, sample_rate, channels, finished);
+        let source = StreamingSource::new(sample_rx, sample_rate, channels, finished, Some(fft_playback_tx));
         
         let new_sink = Sink::try_new(&self.stream_handle)?;
         new_sink.append(source);

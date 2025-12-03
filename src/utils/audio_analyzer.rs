@@ -47,13 +47,13 @@ impl AudioAnalyzer {
         // Convert i16 samples to f32 and add to buffer
         for &sample in samples {
             self.buffer.push(sample as f32 / 32768.0);
-            
-            // When buffer is full, run FFT
-            if self.buffer.len() >= FFT_SIZE {
-                self.run_fft();
-                // Keep last half for overlap (smoother transitions)
-                self.buffer.drain(0..FFT_SIZE / 2);
-            }
+        }
+        
+        // Process FFT whenever we have enough samples
+        while self.buffer.len() >= FFT_SIZE {
+            self.run_fft();
+            // Slide window by half size for overlap (smoother transitions, no interruption)
+            self.buffer.drain(0..FFT_SIZE / 2);
         }
     }
 

@@ -39,6 +39,7 @@ oauth/*
 *.pem
 *.key
 *.crt
+src/main.rs  # Contains OAuth credentials - use dummy values for public repo
 
 # === Do NOT track these user-specific files ===
 *.log

@@ -132,7 +132,14 @@ impl AudioController {
                                 let url = current_url_clone.lock().unwrap().clone();
                                 let token = current_token_clone.lock().unwrap().clone();
                                 if let (Some(u), Some(t)) = (url, token) {
-                                    if let Err(e) = rt.block_on(p.seek(pos, &u, &t)) {
+                                    if let Err(e) = rt.block_on(p.seek(
+                                        pos, 
+                                        &u, 
+                                        &t,
+                                        Arc::clone(&bass_energy),
+                                        Arc::clone(&mid_energy),
+                                        Arc::clone(&high_energy),
+                                    )) {
                                         log::error!("[AudioController] Seek error: {}", e);
                                     }
                                 }

@@ -433,6 +433,10 @@ impl MusicPlayerApp {
             let device = &render_state.device;
             let format = render_state.target_format;
             
+            // Store WGPU resources for later shader reinitialization (e.g., after logout)
+            app.wgpu_device = Some(std::sync::Arc::new(device.clone()));
+            app.wgpu_format = Some(format);
+            
             // Splash screen shader (Nebula Drift)
             let splash_wgsl = include_str!("../shaders/splash_bg.wgsl");
             let splash_pipeline = crate::utils::shader::ShaderPipeline::new(device, format, splash_wgsl);
@@ -1244,6 +1248,20 @@ impl MusicPlayerApp {
         
         // Reset tab to Home
         self.selected_tab = MainTab::Home;
+        
+        // Reinitialize splash shader for logout screen
+        if let (Some(device), Some(format)) = (&self.wgpu_device, self.wgpu_format) {
+            let splash_wgsl = include_str!("../shaders/splash_bg.wgsl");
+            let splash_pipeline = crate::utils::shader::ShaderPipeline::new(device, format, splash_wgsl);
+            self.splash_shader = Some(std::sync::Arc::new(splash_pipeline));
+            log::info!("[Shader] Reinitialized splash shader for logout");
+        } else {
+            log::warn!("[Shader] Cannot reinitialize splash shader - WGPU resources not available");
+        }
+        
+        // Reset authentication state flags
+        self.token_check_done = false;
+        self.is_authenticating = false;
         
         // Return to splash screen for re-login
         self.screen = AppScreen::Splash;

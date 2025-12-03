@@ -74,10 +74,19 @@ impl Iterator for StreamingSource {
         // Try to get next chunk
         match self.sample_rx.try_recv() {
             Ok(samples) => {
-                // Feed samples to FFT analyzer if available
+                // Feed samples to FFT analyzer if available (throttled to prevent audio stutters)
+                // Only process FFT every 4th chunk (~90ms at 44.1kHz) to reduce CPU load
+                static mut FFT_SKIP_COUNTER: u32 = 0;
                 if let Some(analyzer) = &self.analyzer {
-                    if let Ok(mut a) = analyzer.lock() {
-                        a.process_samples(&samples);
+                    unsafe {
+                        FFT_SKIP_COUNTER += 1;
+                        if FFT_SKIP_COUNTER % 4 == 0 {
+                            // Use try_lock to avoid blocking audio thread
+                            if let Ok(mut a) = analyzer.try_lock() {
+                                a.process_samples(&samples);
+                            }
+                            // If lock fails, skip FFT update this time (audio takes priority)
+                        }
                     }
                 }
                 
@@ -437,6 +446,19 @@ async fn stream_audio(
         .send()
         .await?;
     
+    // Get expected file size from Content-Length header (if available)
+    let expected_size = streaming_response
+        .headers()
+        .get("content-length")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.parse::<usize>().ok());
+    
+    if let Some(size) = expected_size {
+        log::info!("[Streaming] Expected file size: {} KB ({} bytes)", size / 1024, size);
+    } else {
+        log::warn!("[Streaming] No Content-Length header - stream end detection may be less reliable");
+    }
+    
     let mut mp3_buffer = Vec::new();
     let mut total_downloaded = 0;
     let mut total_frames_sent = 0; // Track frames we've already sent
@@ -489,6 +511,28 @@ async fn stream_audio(
             log::debug!("[Streaming] Downloaded {} KB, buffer {} KB, sent {} frames...", 
                 total_downloaded / 1024, mp3_buffer.len() / 1024, total_frames_sent);
         }
+    }
+    
+    // Stream complete - verify we got all the data
+    if let Some(expected) = expected_size {
+        let download_percent = (total_downloaded as f32 / expected as f32) * 100.0;
+        if download_percent < 95.0 {
+            log::warn!(
+                "[Streaming] Stream ended prematurely! Downloaded {} KB / {} KB ({:.1}%)",
+                total_downloaded / 1024,
+                expected / 1024,
+                download_percent
+            );
+        } else {
+            log::info!(
+                "[Streaming] Stream complete: {} KB / {} KB ({:.1}%)",
+                total_downloaded / 1024,
+                expected / 1024,
+                download_percent
+            );
+        }
+    } else {
+        log::info!("[Streaming] Stream complete (no size validation available): {} KB total", total_downloaded / 1024);
     }
     
     // Decode any remaining frames we haven't sent

@@ -32,7 +32,6 @@ struct StreamingSource {
     sample_rate: u32,
     channels: u16,
     finished: Arc<Mutex<bool>>,
-    analyzer: Option<Arc<Mutex<crate::utils::audio_analyzer::AudioAnalyzer>>>,
     buffering: bool,  // Track if we're still buffering initial data
     samples_received: usize,  // Count total samples for stuck detection
     last_sample_time: Instant,  // Detect stream timeout
@@ -47,16 +46,10 @@ impl StreamingSource {
             sample_rate,
             channels,
             finished,
-            analyzer: None,
             buffering: true,
             samples_received: 0,
             last_sample_time: Instant::now(),
         }
-    }
-    
-    fn with_analyzer(mut self, analyzer: Arc<Mutex<crate::utils::audio_analyzer::AudioAnalyzer>>) -> Self {
-        self.analyzer = Some(analyzer);
-        self
     }
 }
 
@@ -74,22 +67,6 @@ impl Iterator for StreamingSource {
         // Try to get next chunk
         match self.sample_rx.try_recv() {
             Ok(samples) => {
-                // Feed samples to FFT analyzer if available (throttled to prevent audio stutters)
-                // Only process FFT every 4th chunk (~90ms at 44.1kHz) to reduce CPU load
-                static mut FFT_SKIP_COUNTER: u32 = 0;
-                if let Some(analyzer) = &self.analyzer {
-                    unsafe {
-                        FFT_SKIP_COUNTER += 1;
-                        if FFT_SKIP_COUNTER % 4 == 0 {
-                            // Use try_lock to avoid blocking audio thread
-                            if let Ok(mut a) = analyzer.try_lock() {
-                                a.process_samples(&samples);
-                            }
-                            // If lock fails, skip FFT update this time (audio takes priority)
-                        }
-                    }
-                }
-                
                 self.current_samples = samples;
                 self.sample_index = 0;
                 self.samples_received += self.current_samples.len();
@@ -163,7 +140,10 @@ impl AudioPlayer {
         log::info!("[AudioPlayer] Starting progressive streaming for track {}", track_id);
         let (_stream, stream_handle) = OutputStream::try_default()?;
         
+        // Create dual channels - one for audio playback, one for FFT
         let (sample_tx, sample_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+        let (fft_tx, fft_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+        
         let finished = Arc::new(Mutex::new(false));
         let finished_clone = Arc::clone(&finished);
         
@@ -171,11 +151,11 @@ impl AudioPlayer {
         let token_owned = token.to_string();
         let cache_key = format!("audio_{}", track_id);
         
-        // Spawn streaming thread
+        // Spawn streaming thread that sends to BOTH channels
         let stream_thread = std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async {
-                if let Err(e) = stream_audio(&url_owned, &token_owned, &cache_key, sample_tx, finished_clone).await {
+                if let Err(e) = stream_audio(&url_owned, &token_owned, &cache_key, sample_tx, fft_tx, finished_clone).await {
                     log::error!("[AudioPlayer] Streaming error: {}", e);
                 }
             });
@@ -187,7 +167,7 @@ impl AudioPlayer {
         let sample_rate = 44100; // Default for MP3
         let channels = 2; // Stereo default
         
-        // Create FFT analyzer that writes directly to app's energy handles
+        // Create FFT analyzer that reads from its own dedicated channel
         let analyzer = crate::utils::audio_analyzer::AudioAnalyzer::new(
             Arc::clone(&bass_energy),
             Arc::clone(&mid_energy),
@@ -195,8 +175,21 @@ impl AudioPlayer {
         );
         
         let analyzer_arc = Arc::new(Mutex::new(analyzer));
-        let source = StreamingSource::new(sample_rx, sample_rate, channels, finished)
-            .with_analyzer(analyzer_arc);
+        
+        // Spawn dedicated FFT processing thread (separate from audio playback)
+        let fft_analyzer = Arc::clone(&analyzer_arc);
+        std::thread::spawn(move || {
+            log::info!("[FFT] Dedicated FFT processing thread started");
+            while let Ok(samples) = fft_rx.recv() {
+                if let Ok(mut a) = fft_analyzer.lock() {
+                    a.process_samples(&samples);
+                }
+            }
+            log::info!("[FFT] FFT processing thread terminated");
+        });
+        
+        // Audio source only handles playback (no FFT blocking)
+        let source = StreamingSource::new(sample_rx, sample_rate, channels, finished);
         
         let sink = Sink::try_new(&stream_handle)?;
         sink.append(source);
@@ -304,6 +297,7 @@ impl AudioPlayer {
 
         // Create new streaming components
         let (sample_tx, sample_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+        let (fft_tx, fft_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
         let finished = Arc::new(Mutex::new(false));
         let finished_clone = Arc::clone(&finished);
         
@@ -311,7 +305,7 @@ impl AudioPlayer {
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async {
-                if let Err(e) = stream_from_actual_url(&actual_url, byte_offset, sample_tx, finished_clone).await {
+                if let Err(e) = stream_from_actual_url(&actual_url, byte_offset, sample_tx, fft_tx, finished_clone).await {
                     log::error!("[AudioPlayer] Seek streaming error: {}", e);
                 }
             });
@@ -322,6 +316,15 @@ impl AudioPlayer {
 
         let sample_rate = 44100;
         let channels = 2;
+        
+        // Spawn dedicated FFT thread for seek
+        std::thread::spawn(move || {
+            while let Ok(samples) = fft_rx.recv() {
+                // FFT processing happens here in dedicated thread
+                // For now just drain to prevent channel blocking
+                drop(samples);
+            }
+        });
         
         let source = StreamingSource::new(sample_rx, sample_rate, channels, finished);
         
@@ -344,6 +347,7 @@ async fn stream_from_actual_url(
     actual_url: &str,
     byte_offset: u64,
     sample_tx: Sender<Vec<i16>>,
+    fft_tx: Sender<Vec<i16>>,
     finished: Arc<Mutex<bool>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = crate::utils::http::client();
@@ -376,11 +380,14 @@ async fn stream_from_actual_url(
             match decoder.next_frame() {
                 Ok(Frame { data, .. }) => {
                     if frame_index >= total_frames_sent {
-                        if sample_tx.send(data).is_err() {
+                        // Send to audio playback
+                        if sample_tx.send(data.clone()).is_err() {
                             log::debug!("[Streaming] Seek playback stopped");
                             *finished.lock().unwrap() = true;
                             return Ok(());
                         }
+                        // Send to FFT (ignore errors - FFT is optional)
+                        let _ = fft_tx.send(data);
                         total_frames_sent += 1;
                     }
                     frame_index += 1;
@@ -403,7 +410,8 @@ async fn stream_from_actual_url(
     let mut frame_index = 0;
     while let Ok(Frame { data, .. }) = decoder.next_frame() {
         if frame_index >= total_frames_sent {
-            let _ = sample_tx.send(data);
+            let _ = sample_tx.send(data.clone());
+            let _ = fft_tx.send(data);
         }
         frame_index += 1;
     }
@@ -418,6 +426,7 @@ async fn stream_audio(
     token: &str,
     _cache_key: &str,
     sample_tx: Sender<Vec<i16>>,
+    fft_tx: Sender<Vec<i16>>,
     finished: Arc<Mutex<bool>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Get redirect Location header without following
@@ -481,11 +490,14 @@ async fn stream_audio(
                 Ok(Frame { data, .. }) => {
                     // Only send frames we haven't sent yet
                     if frame_index >= total_frames_sent {
-                        if sample_tx.send(data).is_err() {
+                        // Send to audio playback
+                        if sample_tx.send(data.clone()).is_err() {
                             log::info!("[Streaming] Playback stopped by user, downloaded {} KB total", total_downloaded / 1024);
                             *finished.lock().unwrap() = true;
                             return Ok(());
                         }
+                        // Send to FFT (ignore errors - FFT is optional)
+                        let _ = fft_tx.send(data);
                         total_frames_sent += 1;
                     }
                     frame_index += 1;
@@ -540,7 +552,8 @@ async fn stream_audio(
     let mut frame_index = 0;
     while let Ok(Frame { data, .. }) = decoder.next_frame() {
         if frame_index >= total_frames_sent {
-            let _ = sample_tx.send(data);
+            let _ = sample_tx.send(data.clone());
+            let _ = fft_tx.send(data);
         }
         frame_index += 1;
     }

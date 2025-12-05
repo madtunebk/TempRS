@@ -47,6 +47,9 @@ src/main.rs  # Contains OAuth credentials - use dummy values for public repo
 *.swp
 target/
 GIT_REMOTES.txt
+commit.sh
+test_play_history.sh
+tools.txt
 
 # === Ignore creds accesible  ===
 

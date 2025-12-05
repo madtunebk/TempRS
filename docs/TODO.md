@@ -1,6 +1,84 @@
 # TempRS - TODO List
 
-## COMPLETED WORK - December 2, 2025 ✅
+## COMPLETED WORK - December 5, 2025 ✅
+
+### UI/UX Improvements ✅
+- ✅ Social buttons moved to top-left corner of artwork
+- ✅ Share button removed from artwork (exclusive to player bar)
+- ✅ Fixed widget ID clashes using artwork position for unique IDs
+- ✅ Consistent headers across History, Suggestions, Likes, Playlists (24px, white, bold)
+- ✅ Removed duplicate headers from screens
+- ✅ Red error messages eliminated (widget ID conflicts resolved)
+
+### Startup & Performance ✅
+- ✅ Added 2-second minimum splash screen duration
+- ✅ Smooth window initialization (prevents weird startup behavior)
+- ✅ Active timer checking with repaint requests
+- ✅ Debug logging for elapsed time tracking
+
+### Credential Management ✅
+- ✅ Switched to .env file system (dotenvy)
+- ✅ build.rs loads credentials at compile time
+- ✅ .env.example template created
+- ✅ Removed hardcoded credentials from source
+- ✅ Removed obsolete credentials.example.rs and CREDENTIALS_SETUP.md
+
+### Documentation Cleanup ✅
+- ✅ Organized all .md files into docs/ folder
+- ✅ Removed 10 outdated feature documentation files
+- ✅ Kept 9 active/relevant docs
+- ✅ Clean repository structure
+
+### Repository Maintenance ✅
+- ✅ Updated .gitignore (commit.sh, test_play_history.sh, tools.txt)
+- ✅ Removed local scripts from git tracking
+- ✅ Pushed cleanup to both remotes (origin + github)
+
+## Active Tasks & Future Improvements
+
+### Error Handling
+- [ ] Show user-friendly error messages when API calls fail
+- [ ] Better feedback for network issues
+- [ ] Retry logic for failed API requests
+
+### Playlist Management
+- [ ] Add to Playlist functionality
+  - [ ] "Add to Playlist" button (+ icon)
+  - [ ] Modal/dropdown with user's playlists
+  - [ ] API: `PUT /playlists/{playlist_id}/tracks?track_id={track_id}`
+- [ ] Create new playlists
+  - [ ] Create Playlist dialog (title, description)
+  - [ ] API: `POST /playlists` with JSON body
+- [ ] Delete playlists
+  - [ ] Confirmation dialog
+  - [ ] API: `DELETE /playlists/{playlist_id}`
+
+### UI Enhancements
+- [ ] Related tracks view (based on current track)
+- [ ] Advanced search filters
+- [ ] Keyboard shortcuts documentation
+- [ ] Dark/light theme toggle
+
+### Performance
+- [ ] Optimize artwork loading (lazy loading)
+- [ ] Reduce memory usage for large playlists
+- [ ] Cache management UI (view/clear cache)
+
+## Future Ideas
+
+### Extract Reusable Crates
+- `rodio-streaming` - Progressive MP3 streaming with seeking
+- `egui-soundcloud` - SoundCloud OAuth + API client
+- `egui-wgsl-shaders` - WGSL shader utilities for egui
+
+### Platform Support
+- [ ] Windows build testing
+- [ ] macOS support
+- [ ] Linux packaging (AppImage, Flatpak)
+
+---
+
+For completed work history, see [CHANGELOG.md](CHANGELOG.md)
 
 ### Volume Control Enhancement ✅
 - ✅ Vertical popup slider (140px tall)

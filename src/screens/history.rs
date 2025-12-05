@@ -36,6 +36,19 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             ui.add_space(20.0);
             
+            // Title (centered)
+            ui.horizontal(|ui| {
+                ui.add_space(20.0);
+                ui.label(
+                    egui::RichText::new("📜 Playback History")
+                        .size(24.0)
+                        .color(egui::Color32::WHITE)
+                        .strong()
+                );
+            });
+            
+            ui.add_space(20.0);
+            
             // Get total count from database (cache it)
             if app.history_total_tracks == 0 {
                 app.history_total_tracks = app.playback_history.get_count() as usize;
@@ -128,20 +141,8 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             // Preload artwork for visible tracks
             preload_history_artwork(app, ui.ctx(), &history_tracks);
             
-            // Header with track count
-            ui.horizontal(|ui| {
-                ui.add_space(20.0);
-                let header_text = format!("📜 Playback History ({} tracks)", app.history_total_tracks);
-                ui.label(
-                    egui::RichText::new(&header_text)
-                        .size(24.0)
-                        .color(egui::Color32::WHITE)
-                        .strong()
-                );
-            });
-            
-            // Search/filter bar (separate row below header)
-            ui.add_space(10.0);
+            // Search/filter bar
+            ui.add_space(5.0);
             
             // Calculate same padding as grid for alignment
             let (_, grid_padding) = calculate_grid_layout(ui.available_width(), 220.0, 15.0);

@@ -247,9 +247,10 @@ impl Default for MusicPlayerApp {
             selected_tab: MainTab::Home,
             logo_texture: None,
             
-            // Start splash timer immediately
+            // Start splash timer immediately with minimum 2 second display
+            // This prevents window from acting weirdly during initialization
             splash_start_time: Some(Instant::now()),
-            splash_min_duration: Duration::from_secs(0),
+            splash_min_duration: Duration::from_secs(2),
             
             // Shared state
             app_state,
@@ -2050,7 +2051,17 @@ impl eframe::App for MusicPlayerApp {
             if has_valid_token {
                 // Check if minimum splash duration has elapsed
                 let can_transition = if let Some(start_time) = self.splash_start_time {
-                    start_time.elapsed() >= self.splash_min_duration
+                    let elapsed = start_time.elapsed();
+                    let min_duration = self.splash_min_duration;
+                    
+                    if elapsed < min_duration {
+                        // Not enough time has passed, request repaint to check again soon
+                        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                        false
+                    } else {
+                        debug!("[Splash] Timer check - elapsed: {:?}, minimum: {:?}", elapsed, min_duration);
+                        true
+                    }
                 } else {
                     true // If no timer, allow immediate transition
                 };

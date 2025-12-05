@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2025-12-05
+
+### Added
+- **Environment Variables**: Credential management via .env file
+  - Added dotenvy dependency for .env support
+  - build.rs loads credentials at compile time
+  - .env.example template for setup
+  - Credentials no longer hardcoded in source
+
+- **Splash Screen Timer**: Smooth startup experience
+  - 2-second minimum splash screen display
+  - Prevents window glitches during initialization
+  - Active timer checking with repaint requests
+  - Debug logging for elapsed time tracking
+
+### Changed
+- **Social Buttons**: Simplified artwork interaction
+  - Removed share button from track artwork (only like button now)
+  - Share functionality exclusive to bottom player bar
+  - Top-left corner placement for like button
+  - Fixed widget ID clashes using artwork position coordinates
+  - Unique IDs prevent red error messages when same track appears multiple times
+
+- **Screen Headers**: Consistent styling across all views
+  - Uniform headers on History, Suggestions, Likes, Playlists
+  - 24px font size, white color, bold weight
+  - Removed duplicate headers from views
+
+- **Documentation Organization**: Clean repo structure
+  - Moved all .md files to docs/ folder (except README.md)
+  - Removed 10 outdated/completed feature docs
+  - Kept 9 active documentation files
+  - Removed obsolete credentials.example.rs
+
+### Fixed
+- **Widget ID Conflicts**: Red error messages on home screen
+  - Social buttons now use artwork rect position for unique IDs
+  - Fixed "First use of widget ID" errors
+  - Prevents clashes when same track in multiple sections
+
+### Infrastructure
+- **.gitignore Updates**: Cleaner repository
+  - Added commit.sh, test_play_history.sh, tools.txt to ignore
+  - Local scripts no longer tracked in git
+  - Removed from both remotes (origin + github)
+
 ## [0.2.0] - 2025-12-02
 
 ### Added

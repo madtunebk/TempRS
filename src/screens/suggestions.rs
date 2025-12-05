@@ -16,6 +16,19 @@ pub fn render_suggestions_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             ui.add_space(20.0);
             
+            // Title (centered)
+            ui.horizontal(|ui| {
+                ui.add_space(20.0);
+                ui.label(
+                    egui::RichText::new("✨ Suggestions for You")
+                        .size(24.0)
+                        .color(egui::Color32::WHITE)
+                        .strong()
+                );
+            });
+            
+            ui.add_space(20.0);
+            
             // Trigger initial fetch if needed
             if !app.suggestions_loading && app.suggestions_tracks.is_empty() && !app.suggestions_initial_fetch_done {
                 app.fetch_all_suggestions();
@@ -68,19 +81,17 @@ pub fn render_suggestions_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             // Preload artwork for visible tracks
             preload_suggestions_artwork(app, ui.ctx(), &all_tracks);
             
-            // Header with track count
+            // Show track count
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
-                let header_text = format!("✨ Suggestions for You ({} tracks)", total_suggestions);
                 ui.label(
-                    egui::RichText::new(&header_text)
-                        .size(24.0)
-                        .color(egui::Color32::WHITE)
-                        .strong()
+                    egui::RichText::new(format!("{} tracks", total_suggestions))
+                        .size(14.0)
+                        .color(egui::Color32::GRAY)
                 );
             });
             
-            ui.add_space(20.0);
+            ui.add_space(15.0);
             
             // Render tracks grid
             if let Some(action) = render_suggestions_grid(app, ui, &all_tracks) {

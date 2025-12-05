@@ -21,7 +21,6 @@ const APP_DESCRIPTION: &str = "SoundCloud Desktop Player";
 // See CREDENTIALS_SETUP.md for instructions on getting credentials
 pub const SOUNDCLOUD_CLIENT_ID: &str = env!("SOUNDCLOUD_CLIENT_ID");
 pub const SOUNDCLOUD_CLIENT_SECRET: &str = env!("SOUNDCLOUD_CLIENT_SECRET");
->>>>>>> 02c0d81 (feat: use .env file for credentials (proper security))
 
 const APP_HEIGHT: f32 = 935.0;
 const APP_WIDTH: f32 = 1480.0;

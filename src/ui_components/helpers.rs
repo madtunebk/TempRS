@@ -7,6 +7,59 @@ use eframe::egui;
 use egui::Color32;
 use crate::ui_components::colors::*;
 
+/// Render like button only in top-left corner of artwork
+/// Share/copy functionality is available in the bottom player bar
+/// Returns (like_clicked, share_clicked) - share_clicked always false now
+pub fn render_social_buttons(
+    app: &mut crate::app::player_app::MusicPlayerApp,
+    ui: &mut egui::Ui,
+    artwork_rect: egui::Rect,
+    track_id: u64,
+    _permalink_url: Option<&String>,  // Not used anymore, kept for API compatibility
+) -> (bool, bool) {
+    use egui::{Vec2, Sense};
+    
+    let button_size = 32.0;
+    let top_left_padding = 4.0;
+    
+    // Like button in top-left corner (only button on artwork now)
+    // Use artwork_rect position as unique context to avoid ID clashes when same track appears multiple times
+    let like_pos = artwork_rect.min + Vec2::new(top_left_padding, top_left_padding);
+    let like_rect = egui::Rect::from_min_size(like_pos, Vec2::new(button_size, button_size));
+    let unique_id = ui.id().with(("like", track_id, artwork_rect.min.x as i32, artwork_rect.min.y as i32));
+    let like_response = ui.interact(like_rect, unique_id, Sense::click());
+    
+    let is_liked = app.liked_track_ids.contains(&track_id);
+    let (like_icon, like_bg_color) = if is_liked {
+        ("❤", Color32::from_rgba_premultiplied(255, 85, 0, 200))  // Orange filled heart
+    } else if like_response.hovered() {
+        ("♡", Color32::from_rgba_premultiplied(255, 255, 255, 200))  // White outline on hover
+    } else {
+        ("♡", Color32::from_rgba_premultiplied(0, 0, 0, 150))  // Dark outline normally
+    };
+    
+    ui.painter().circle_filled(like_rect.center(), button_size / 2.0, like_bg_color);
+    ui.painter().text(
+        like_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        like_icon,
+        egui::FontId::proportional(18.0),
+        Color32::WHITE,
+    );
+    
+    let like_clicked = like_response.clicked();
+    if like_clicked {
+        app.toggle_like(track_id);
+    }
+    
+    if like_response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    
+    // Share button removed - accessible only from bottom player bar
+    (like_clicked, false)
+}
+
 /// Truncate text to max length with ellipsis
 pub fn truncate_text(text: &str, max_len: usize) -> String {
     let chars: Vec<char> = text.chars().collect();
@@ -193,6 +246,15 @@ pub fn render_track_card(
             Color32::WHITE,
         );
     }
+    
+    // Social buttons in top-left corner (like/share) - using reusable function
+    let (_like_clicked, _share_clicked) = render_social_buttons(
+        app,
+        ui,
+        artwork_rect,
+        track.id,
+        track.permalink_url.as_ref(),
+    );
     
     // Metadata section with consistent padding
     let metadata_y = rect.min.y + card_size + card_padding;

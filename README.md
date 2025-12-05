@@ -102,67 +102,76 @@ cargo build --release
 - Efficient caching: hybrid filesystem + SQLite metadata
 - Non-blocking UI: all heavy operations run in background threads
 
-**Load average**: ~0.15 during active playback (system barely notices it's running)
+## Architecture
+
+### Threading Model
+- **Main thread**: Synchronous egui UI update loop
+- **Background tasks**: `std::thread::spawn` + `tokio::Runtime` for async operations
+- **Communication**: `mpsc::channel` for async results, `Arc<Mutex<T>>` for shared state
+- **Memory**: Explicit resource cleanup with `drop()` when needed
+
+### Progressive Audio Streaming
+1. Request stream URL from SoundCloud API (OAuth authenticated)
+2. Follow redirect to CDN (cf-media.sndcdn.com)
+3. Stream audio chunks via HTTP
+4. Decode MP3 frames progressively with minimp3
+5. Feed decoded samples to rodio for playback
+
+**Dual-channel FFT architecture:**
+- Download thread → decode → audio_tx (playback) + fft_download_tx (visualization during buffering)
+- Playback iterator → fft_playback_tx (visualization during actual playback)
+- FFT thread processes both channels → bass/mid/high frequency analysis
+- Result: Smooth playback + accurate visualization with zero stuttering
+
+**Buffer management:**
+- Buffering threshold: 44100 samples (~1 second)
+- 5-second timeout detection for stuck streams
+- Buffer limits: 5MB max, auto-trim to 2MB
+
+**Seeking:**
+- Calculate byte offset (assumes 128kbps MP3 ≈ 16KB/s)
+- Request fresh redirect URL with Range header
+- Start new stream from offset position
+
+### Caching Strategy
+- **Filesystem**: `~/.cache/TempRS/` - artwork/thumbnails (SHA256-named files)
+- **SQLite**: `~/.cache/TempRS/cache.db` - metadata tracking (URLs, hashes, timestamps)
+- **Placeholder tracking**: Prevents retry loops for 404s (`is_placeholder=1` flag)
+- **Auto-cleanup**: 30 days old + 100GB limit at startup
+- **No audio caching**: Pure streaming, no disk storage
+
+### Storage Locations
+- **Tokens**: `~/.config/TempRS/tokens.db` (AES-256-GCM encrypted)
+- **History**: `~/.config/TempRS/playback_history.db` (local playback tracking)
+- **Cache**: `~/.cache/TempRS/` (artwork + metadata)
+
+## Recent Updates
+
+### v0.2.1 (2025-12-05)
+- **Environment variables**: .env file for credentials (build-time loading)
+- **Social buttons**: Simplified to like-only on artwork, share in player bar
+- **Widget ID fixes**: No more red error messages on duplicate tracks
+- **Splash screen**: 2-second minimum display for smooth startup
+- **Documentation**: Organized into docs/ folder, removed 10 outdated files
+
+### v0.2.0 (2025-12-02)
+- **Volume control**: Vertical popup slider (click to toggle, right-click to mute)
+- **Playlist management**: Like/unlike playlists with API sync
+- **Graceful shutdown**: Proper resource cleanup on exit
+- **Audio improvements**: Buffering state tracking, timeout detection, buffer management
+- **UI polish**: Removed duplicate badges, fixed character encoding, text-only toasts
+
+## Screenshots
+
+See [images/README.md](images/README.md) for detailed feature screenshots.
 
 ## Build & Run
 
 ```bash
+# Make sure .env file is configured first
 cargo build --release
 ./target/release/TempRS
 ```
-
-## How Streaming Works
-
-1. Request stream URL from SoundCloud API (with OAuth)
-2. Follow redirect to actual CDN URL (cf-media.sndcdn.com)
-3. Stream audio in chunks via HTTP
-4. Decode MP3 frames progressively with minimp3
-5. Feed decoded samples to rodio for playback
-6. Track sent frames to avoid re-sending duplicates
-
-### Seeking Implementation
-- Stops current stream
-- Calculates byte offset (assumes 128kbps MP3 ≈ 16KB/s)
-- Requests fresh redirect URL
-- Starts new stream with Range header from offset
-- Resumes playback
-
-## Recent Changes (2025-12-02)
-
-### ✅ Volume Control Enhancement
-- Replaced horizontal slider with vertical popup (140px tall)
-- Click speaker icon to toggle popup
-- Right-click speaker to mute/unmute
-- Clean UI with shadow layers and orange accent
-
-### ✅ Graceful Shutdown System
-- Proper cleanup of audio resources
-- Saves playback settings on exit
-- Clears receivers, textures, and caches
-- No confirmation dialog (direct cleanup)
-
-### ✅ Audio Sync Improvements
-- Added buffering state tracking (prevents premature "finished" detection)
-- 5-second timeout detection for stuck streams
-- Buffer management: 5MB limit with 2MB trim when exceeded
-- Fixed rare endless stuck/choppy audio issues
-
-### ✅ Like/Unlike Functionality
-- Track like/unlike from Likes screen and player footer
-- Playlist like/unlike from Playlists tab
-- Optimistic UI updates with background API sync
-- Heart icons: ❤ (liked) / 💔 (unliked)
-- Red hover effect on unlike buttons
-
-### ✅ UI/UX Polish
-- Removed duplicate badges from track cards
-- Character encoding fixes (× → x/X)
-- Toast notifications: text-only (no emojis)
-- Broken heart icon for unliked state
-
-### ✅ Git Repository
-- Remote: `ssh://gitea@gitea.home.cornfield/nobus/TempRS.git`
-- All changes committed and pushed
 
 ## Project Structure
 
@@ -215,42 +224,13 @@ src/
 - **Playback History**: `~/.config/TempRS/playback_history.db` (local tracking)
 - **No audio files stored** (streaming only)
 
-## Key Architecture Patterns
+## Contributing
 
-### Threading Model
-- **Main thread**: Synchronous egui update loop
-- **Background tasks**: `std::thread::spawn` + `tokio::Runtime::new().block_on()`
-- **Communication**: `mpsc::channel` for results, `Arc<Mutex<T>>` for shared state
-- **Memory management**: Explicit `drop()` for immediate resource cleanup
+See [docs/TODO.md](docs/TODO.md) for active tasks and future improvements.
 
-### Audio Streaming
-- HTTP streaming with live MP3 decoding (minimp3)
-- **Dual-channel architecture**: 
-  - `audio_rx`: rodio playback (smooth, never blocked)
-  - `fft_download_rx`: FFT during buffering phase
-  - `fft_playback_rx`: FFT during actual playback (continues after download completes)
-- Frame-index tracking to avoid duplicate sends
-- Buffering threshold: 44100 samples (~1 second)
-- 5-second timeout detection for stuck streams
-- Buffer limits: 5MB max, trims to 2MB when exceeded
+## License
 
-### FFT Visualization Pipeline
-- **Thread 1 (Download)**: HTTP stream → decode → send to audio_tx + fft_download_tx
-- **Thread 2 (Audio)**: audio_rx → rodio playback (never blocked by FFT)
-- **Thread 3 (Playback)**: Iterator sends samples → fft_playback_tx (non-blocking)
-- **Thread 4 (FFT)**: Merges both FFT channels → frequency analysis → bass/mid/high energy
-- Result: Buttery smooth playback + accurate visualization with zero stuttering
-
-### Caching Strategy
-- **Filesystem**: Actual files (artwork, thumbnails)
-- **SQLite**: Metadata (URLs, hashes, cache status, placeholder flags)
-- **Placeholder tracking**: Prevents retry loops for 404s
-- **Auto-cleanup**: 30 days + 100GB limit enforced at startup
-
-## Dependencies
-
-- Pure Rust (cross-platform)
-- No external audio libraries required
+This project is for personal/educational use. SoundCloud API usage requires valid credentials.
 - minimp3: ~50KB addition to binary
 - All dependencies statically linked
 

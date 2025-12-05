@@ -34,7 +34,51 @@
 - ✅ Removed local scripts from git tracking
 - ✅ Pushed cleanup to both remotes (origin + github)
 
-## COMPLETED WORK - December 2, 2025 ✅
+## Active Tasks & Future Improvements
+
+### Error Handling
+- [ ] Show user-friendly error messages when API calls fail
+- [ ] Better feedback for network issues
+- [ ] Retry logic for failed API requests
+
+### Playlist Management
+- [ ] Add to Playlist functionality
+  - [ ] "Add to Playlist" button (+ icon)
+  - [ ] Modal/dropdown with user's playlists
+  - [ ] API: `PUT /playlists/{playlist_id}/tracks?track_id={track_id}`
+- [ ] Create new playlists
+  - [ ] Create Playlist dialog (title, description)
+  - [ ] API: `POST /playlists` with JSON body
+- [ ] Delete playlists
+  - [ ] Confirmation dialog
+  - [ ] API: `DELETE /playlists/{playlist_id}`
+
+### UI Enhancements
+- [ ] Related tracks view (based on current track)
+- [ ] Advanced search filters
+- [ ] Keyboard shortcuts documentation
+- [ ] Dark/light theme toggle
+
+### Performance
+- [ ] Optimize artwork loading (lazy loading)
+- [ ] Reduce memory usage for large playlists
+- [ ] Cache management UI (view/clear cache)
+
+## Future Ideas
+
+### Extract Reusable Crates
+- `rodio-streaming` - Progressive MP3 streaming with seeking
+- `egui-soundcloud` - SoundCloud OAuth + API client
+- `egui-wgsl-shaders` - WGSL shader utilities for egui
+
+### Platform Support
+- [ ] Windows build testing
+- [ ] macOS support
+- [ ] Linux packaging (AppImage, Flatpak)
+
+---
+
+For completed work history, see [CHANGELOG.md](CHANGELOG.md)
 
 ### Volume Control Enhancement ✅
 - ✅ Vertical popup slider (140px tall)

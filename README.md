@@ -186,33 +186,64 @@ src/
 │   ├── layout.rs           # Shared layout wrapper (header/footer/sidebar)
 │   ├── player.rs           # Playback controls footer
 │   ├── playlist_sidebar.rs # Queue sidebar with track list
-│   └── helpers.rs          # UI utility functions
+│   ├── helpers.rs          # UI utility functions (social buttons, track cards)
+│   ├── search_bar.rs       # Search input component
+│   ├── toast.rs            # Toast notification system
+│   ├── colors.rs           # Color constants
+│   └── icons.rs            # Icon rendering utilities
 ├── screens/
-│   ├── splash.rs           # Splash screen with WGSL shader
+│   ├── splash.rs           # Splash screen with WGSL shader (2s minimum)
 │   ├── likes.rs            # Liked tracks with unlike buttons
-│   ├── playlists.rs        # User playlists (legacy - unused)
 │   ├── user_playlists.rs   # Playlists tab with unlike buttons
 │   ├── history.rs          # Playback history view
-│   └── home/               # Home screen modules
-│       ├── recently_played.rs
-│       ├── recommendations.rs
-│       └── suggestions.rs
+│   ├── now_playing.rs      # Now playing full screen view
+│   ├── suggestions.rs      # Suggestions/Related tracks view
+│   ├── home/               # Home screen modules
+│   │   ├── mod.rs
+│   │   ├── recently_played.rs
+│   │   ├── recommendations.rs
+│   │   └── suggestions.rs
+│   └── search/             # Search screen modules
+│       ├── mod.rs
+│       ├── filters.rs
+│       └── results.rs
 ├── api/
 │   ├── likes.rs            # Like/unlike tracks & playlists
 │   ├── playlists.rs        # Playlist fetching
 │   ├── tracks.rs           # Track streaming & metadata
-│   └── search.rs           # Search endpoints
+│   ├── search.rs           # Search endpoints
+│   ├── users.rs            # User profile endpoints
+│   └── activities.rs       # Activity stream endpoints
 ├── utils/
 │   ├── audio_controller.rs # Audio thread management
-│   ├── mediaplay.rs        # Streaming & MP3 decoding
+│   ├── mediaplay.rs        # Streaming & MP3 decoding (progressive streaming)
 │   ├── oauth.rs            # OAuth 2.0 + PKCE flow
 │   ├── token_store.rs      # AES-256-GCM encrypted storage
+│   ├── token_helper.rs     # Token validation & refresh
 │   ├── fingerprint.rs      # Machine fingerprinting
 │   ├── cache.rs            # Hybrid caching (filesystem + DB)
 │   ├── playback_history.rs # Local playback tracking
-│   └── shader.rs           # WGSL shader pipeline
-└── shaders/
-    └── splash_bg.wgsl      # Splash screen background shader
+│   ├── shader.rs           # WGSL shader pipeline
+│   ├── audio_analyzer.rs   # Audio analysis utilities
+│   ├── audio_fft.rs        # FFT audio visualization
+│   ├── artwork.rs          # Artwork loading & caching
+│   ├── clipboard.rs        # Clipboard operations
+│   ├── formatting.rs       # Time/number formatting
+│   ├── http.rs             # HTTP client utilities
+│   └── track_filter.rs     # Track filtering (streamable checks)
+├── models/
+│   ├── track.rs            # Track data structures
+│   ├── playlist.rs         # Playlist data structures
+│   ├── user.rs             # User data structures
+│   ├── activity.rs         # Activity data structures
+│   └── responses.rs        # API response wrappers
+├── data/
+│   └── home_data.rs        # Home screen data management
+├── shaders/
+│   ├── splash_bg.wgsl      # Splash screen background shader
+│   ├── track_metadata_bg.wgsl # Track metadata background shader
+│   └── plasma.wgsl         # Plasma effect shader
+└── app_state.rs            # Global app state (Arc<RwLock>)
 ```
 
 ## Cache Locations

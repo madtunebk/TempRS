@@ -8,18 +8,25 @@ A Rust-based desktop music player for SoundCloud with progressive audio streamin
 
 ## ⚠️ Setup Required
 
-**Before building**: You need SoundCloud API credentials. See [CREDENTIALS_SETUP.md](CREDENTIALS_SETUP.md) for instructions.
+**Before building**: You need SoundCloud API credentials.
 
-The repository ships with dummy credentials that won't work - replace them in `src/main.rs`:
-```rust
-pub const SOUNDCLOUD_CLIENT_ID: &str = "YOUR_CLIENT_ID_HERE";
-pub const SOUNDCLOUD_CLIENT_SECRET: &str = "YOUR_CLIENT_SECRET_HERE";
+1. Create a `.env` file from the template:
+```bash
+cp .env.example .env
 ```
+
+2. Add your SoundCloud API credentials to `.env`:
+```env
+SOUNDCLOUD_CLIENT_ID=your_client_id_here
+SOUNDCLOUD_CLIENT_SECRET=your_client_secret_here
+```
+
+Credentials are loaded at compile time via `build.rs` and never committed to git.
 
 ## Build & Run
 
 ```bash
-# Replace credentials in src/main.rs first
+# Make sure .env file is configured first
 cargo build --release
 ./target/release/TempRS
 ```

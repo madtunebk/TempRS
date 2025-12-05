@@ -1,5 +1,39 @@
 # TempRS - TODO List
 
+## COMPLETED WORK - December 5, 2025 ✅
+
+### UI/UX Improvements ✅
+- ✅ Social buttons moved to top-left corner of artwork
+- ✅ Share button removed from artwork (exclusive to player bar)
+- ✅ Fixed widget ID clashes using artwork position for unique IDs
+- ✅ Consistent headers across History, Suggestions, Likes, Playlists (24px, white, bold)
+- ✅ Removed duplicate headers from screens
+- ✅ Red error messages eliminated (widget ID conflicts resolved)
+
+### Startup & Performance ✅
+- ✅ Added 2-second minimum splash screen duration
+- ✅ Smooth window initialization (prevents weird startup behavior)
+- ✅ Active timer checking with repaint requests
+- ✅ Debug logging for elapsed time tracking
+
+### Credential Management ✅
+- ✅ Switched to .env file system (dotenvy)
+- ✅ build.rs loads credentials at compile time
+- ✅ .env.example template created
+- ✅ Removed hardcoded credentials from source
+- ✅ Removed obsolete credentials.example.rs and CREDENTIALS_SETUP.md
+
+### Documentation Cleanup ✅
+- ✅ Organized all .md files into docs/ folder
+- ✅ Removed 10 outdated feature documentation files
+- ✅ Kept 9 active/relevant docs
+- ✅ Clean repository structure
+
+### Repository Maintenance ✅
+- ✅ Updated .gitignore (commit.sh, test_play_history.sh, tools.txt)
+- ✅ Removed local scripts from git tracking
+- ✅ Pushed cleanup to both remotes (origin + github)
+
 ## COMPLETED WORK - December 2, 2025 ✅
 
 ### Volume Control Enhancement ✅

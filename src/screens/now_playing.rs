@@ -142,8 +142,10 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
         ui.add_space(60.0);
         
         // Track title with strong outline/stroke effect
-        let title_pos = ui.cursor().min;
         let title_font = egui::FontId::proportional(28.0);
+        let available_width = ui.available_width();
+        let title_center_x = ui.cursor().min.x + available_width / 2.0;
+        let title_y = ui.cursor().min.y;
         
         // Outer black stroke (thick)
         for distance in [4.0, 3.0, 2.0] {
@@ -152,7 +154,7 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
                 let offset_x = rad.cos() * distance;
                 let offset_y = rad.sin() * distance;
                 ui.painter().text(
-                    egui::pos2(title_pos.x + offset_x, title_pos.y + offset_y),
+                    egui::pos2(title_center_x + offset_x, title_y + offset_y),
                     egui::Align2::CENTER_TOP,
                     &app.current_title,
                     title_font.clone(),
@@ -165,8 +167,9 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
         ui.add_space(10.0);
         
         // Artist name with strong outline
-        let artist_pos = ui.cursor().min;
         let artist_font = egui::FontId::proportional(20.0);
+        let artist_center_x = ui.cursor().min.x + available_width / 2.0;
+        let artist_y = ui.cursor().min.y;
         
         // Outer black stroke
         for distance in [3.0, 2.0] {
@@ -175,7 +178,7 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
                 let offset_x = rad.cos() * distance;
                 let offset_y = rad.sin() * distance;
                 ui.painter().text(
-                    egui::pos2(artist_pos.x + offset_x, artist_pos.y + offset_y),
+                    egui::pos2(artist_center_x + offset_x, artist_y + offset_y),
                     egui::Align2::CENTER_TOP,
                     &track.user.username,
                     artist_font.clone(),
@@ -260,8 +263,10 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         ui.add_space(60.0);
         
         // Track title with strong outline
-        let title_pos = ui.cursor().min;
         let title_font = egui::FontId::proportional(28.0);
+        let available_width = ui.available_width();
+        let title_center_x = ui.cursor().min.x + available_width / 2.0;
+        let title_y = ui.cursor().min.y;
         
         for distance in [4.0, 3.0, 2.0] {
             for angle in 0..16 {
@@ -269,7 +274,7 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 let offset_x = rad.cos() * distance;
                 let offset_y = rad.sin() * distance;
                 ui.painter().text(
-                    egui::pos2(title_pos.x + offset_x, title_pos.y + offset_y),
+                    egui::pos2(title_center_x + offset_x, title_y + offset_y),
                     egui::Align2::CENTER_TOP,
                     &app.current_title,
                     title_font.clone(),
@@ -281,8 +286,9 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         ui.add_space(10.0);
         
         // Artist name with outline
-        let artist_pos = ui.cursor().min;
         let artist_font = egui::FontId::proportional(20.0);
+        let artist_center_x = ui.cursor().min.x + available_width / 2.0;
+        let artist_y = ui.cursor().min.y;
         
         for distance in [3.0, 2.0] {
             for angle in 0..16 {
@@ -290,7 +296,7 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 let offset_x = rad.cos() * distance;
                 let offset_y = rad.sin() * distance;
                 ui.painter().text(
-                    egui::pos2(artist_pos.x + offset_x, artist_pos.y + offset_y),
+                    egui::pos2(artist_center_x + offset_x, artist_y + offset_y),
                     egui::Align2::CENTER_TOP,
                     &app.current_artist,
                     artist_font.clone(),

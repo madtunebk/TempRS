@@ -12,7 +12,8 @@ pub struct ShaderUniforms {
     pub audio_mid: f32,       // Mid frequencies (250-2000Hz)
     pub audio_high: f32,      // High frequencies (2000Hz+)
     pub resolution: [f32; 2],
-    pub _pad0: [f32; 2],      // Padding to 32 bytes
+    pub gamma: f32,           // Gamma correction value
+    pub _pad0: f32,           // Padding to 32 bytes
 }
 
 pub struct ShaderPipeline {
@@ -134,7 +135,8 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
                 screen_descriptor.size_in_pixels[0] as f32,
                 screen_descriptor.size_in_pixels[1] as f32,
             ],
-            _pad0: [0.0, 0.0],
+            gamma: 1.0,
+            _pad0: 0.0,
         };
 
         queue.write_buffer(&self.shader.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));

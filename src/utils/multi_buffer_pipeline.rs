@@ -943,7 +943,8 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
             audio_mid: mid,
             audio_high: high,
             resolution,
-            _pad0: [0.0, 0.0],
+            gamma: 1.0,  // No gamma correction (adjust manually if needed)
+            _pad0: 0.0,
         };
 
         self.shader.update_uniforms(queue, &uniforms);

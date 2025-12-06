@@ -57,4 +57,5 @@ pub const WARNING: Color32 = Color32::from_rgb(255, 193, 7);
 pub const OVERLAY_DARK: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 150);
 #[allow(dead_code)]
 pub const OVERLAY_LIGHT: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 100);
+#[allow(dead_code)]
 pub const OVERLAY_BADGE: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 180);

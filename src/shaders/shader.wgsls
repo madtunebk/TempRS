@@ -1,0 +1,183 @@
+// Exported: 2025-12-06 02:24:38
+
+// BOILERPLATE
+
+// Auto-injected uniforms (available in all shaders)
+struct Uniforms {
+    time: f32,
+    audio_bass: f32,
+    audio_mid: f32,
+    audio_high: f32,
+    resolution: vec2<f32>,
+    _pad0: vec2<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> uniforms: Uniforms;
+
+// Auto-injected vertex output structure
+struct VSOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}
+
+// TEXTURE BINDINGS
+
+// Multi-pass texture bindings
+@group(1) @binding(0) var buffer_a_texture: texture_2d<f32>;
+@group(1) @binding(1) var buffer_a_sampler: sampler;
+@group(1) @binding(2) var buffer_b_texture: texture_2d<f32>;
+@group(1) @binding(3) var buffer_b_sampler: sampler;
+@group(1) @binding(4) var buffer_c_texture: texture_2d<f32>;
+@group(1) @binding(5) var buffer_c_sampler: sampler;
+@group(1) @binding(6) var buffer_d_texture: texture_2d<f32>;
+@group(1) @binding(7) var buffer_d_sampler: sampler;
+
+// VERTEX
+// Default vertex shader - VSOut is now auto-injected!
+// You don't need to define VSOut anymore
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VSOut {
+    var out: VSOut;
+    let x = f32((vertex_index & 1u) << 2u);
+    let y = f32((vertex_index & 2u) << 1u);
+    out.pos = vec4<f32>(x - 1.0, 1.0 - y, 0.0, 1.0);
+    out.uv = vec2<f32>(x * 0.5, y * 0.5);
+    return out;
+}
+
+// MAINIMAGE
+// Default Multi-Pass Demo - MainImage
+// Combines all buffers with audio-reactive color swapping
+// Load Buffer A-D shaders first, then compile!
+
+@fragment
+fn fs_main_image(in: VSOut) -> @location(0) vec4<f32> {
+    let uv = in.uv;
+
+    // Sample all buffer textures
+    let buffer_a = textureSample(buffer_a_texture, buffer_a_sampler, uv); // Red channel
+    let buffer_b = textureSample(buffer_b_texture, buffer_b_sampler, uv); // Blue channel
+    let buffer_c = textureSample(buffer_c_texture, buffer_c_sampler, uv); // Green channel
+    let buffer_d = textureSample(buffer_d_texture, buffer_d_sampler, uv); // Vignette
+
+    // Extract individual color channels
+    let red = buffer_a.r;
+    let blue = buffer_b.b;
+    let green = buffer_c.g;
+
+    // Get audio energy levels
+    let bass = uniforms.audio_bass;
+    let mid = uniforms.audio_mid;
+    let high = uniforms.audio_high;
+
+    // Audio-reactive color swapping
+    // Bass boosts red, Mid boosts green, High boosts blue
+    let r = red * (1.0 + bass * 0.8) + green * (1.0 - bass) * 0.3;
+    let g = green * (1.0 + mid * 0.8) + blue * (1.0 - mid) * 0.3;
+    let b = blue * (1.0 + high * 0.8) + red * (1.0 - high) * 0.3;
+
+    var final_color = vec3<f32>(r, g, b);
+
+    // Apply vignette from Buffer D
+    let vignette = buffer_d.r;
+    final_color = final_color * vignette;
+
+    // Apply gamma correction from Buffer D
+    let gamma = buffer_d.a;
+    final_color = pow(final_color, vec3<f32>(1.0 / gamma));
+
+    // Clamp to valid range
+    final_color = clamp(final_color, vec3<f32>(0.0), vec3<f32>(1.0));
+
+    return vec4<f32>(final_color, 1.0);
+}
+
+// BUFFERA
+// Buffer A - Red Channel (Bass-reactive)
+// Simple animated pattern for the red channel
+
+@fragment
+fn fs_buffer_a(in: VSOut) -> @location(0) vec4<f32> {
+    let uv = in.uv;
+    let t = uniforms.time;
+    let bass = uniforms.audio_bass;
+
+    // Create animated pattern based on UV and time
+    let pattern = sin(uv.x * 10.0 + t) * cos(uv.y * 10.0 + t);
+
+    // Modulate with bass energy
+    let intensity = 0.5 + 0.5 * pattern * (0.5 + bass * 0.5);
+
+    // Return red channel only (R, 0, 0, 1)
+    return vec4<f32>(intensity, 0.0, 0.0, 1.0);
+}
+
+// BUFFERB
+// Buffer B - Blue Channel (Mid-reactive)
+// Simple circular pattern for the blue channel
+
+@fragment
+fn fs_buffer_b(in: VSOut) -> @location(0) vec4<f32> {
+    let uv = in.uv;
+    let t = uniforms.time;
+    let mid = uniforms.audio_mid;
+
+    // Center the UV coordinates
+    let center = uv - vec2<f32>(0.5, 0.5);
+    let dist = length(center);
+
+    // Create circular wave pattern
+    let wave = sin(dist * 20.0 - t * 2.0);
+
+    // Modulate with mid frequencies
+    let intensity = 0.5 + 0.5 * wave * (0.5 + mid * 0.5);
+
+    // Return blue channel only (0, 0, B, 1)
+    return vec4<f32>(0.0, 0.0, intensity, 1.0);
+}
+
+// BUFFERC
+// Buffer C - Green Channel (High-reactive)
+// Simple grid pattern for the green channel
+
+@fragment
+fn fs_buffer_c(in: VSOut) -> @location(0) vec4<f32> {
+    let uv = in.uv;
+    let t = uniforms.time;
+    let high = uniforms.audio_high;
+
+    // Create diagonal stripe pattern
+    let diag = uv.x + uv.y + t * 0.2;
+    let stripes = sin(diag * 15.0);
+
+    // Modulate with high frequencies
+    let intensity = 0.5 + 0.5 * stripes * (0.5 + high * 0.5);
+
+    // Return green channel only (0, G, 0, 1)
+    return vec4<f32>(0.0, intensity, 0.0, 1.0);
+}
+
+// BUFFERD
+// Buffer D - Alpha/Gamma Effect
+// Creates a vignette and gamma correction layer
+
+@fragment
+fn fs_buffer_d(in: VSOut) -> @location(0) vec4<f32> {
+    let uv = in.uv;
+
+    // Center the UV coordinates
+    let center = uv - vec2<f32>(0.5, 0.5);
+    let dist = length(center);
+
+    // Create vignette effect (darker at edges)
+    let vignette = 1.0 - smoothstep(0.3, 0.8, dist);
+
+    // Store vignette in all channels for easy multiplication
+    // Alpha channel stores gamma value
+    let gamma = 1.2; // Slight gamma boost
+
+    return vec4<f32>(vignette, vignette, vignette, gamma);
+}
+

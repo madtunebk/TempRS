@@ -1,6 +1,6 @@
 use eframe::egui;
 use crate::app::player_app::MusicPlayerApp;
-use crate::utils::shader::ShaderCallback;
+use crate::utils::ShaderCallback;
 
 pub fn render_splash_screen(app: &mut MusicPlayerApp, ctx: &egui::Context) {
     // Request repaint with 60 FPS limit to reduce CPU usage
@@ -9,17 +9,17 @@ pub fn render_splash_screen(app: &mut MusicPlayerApp, ctx: &egui::Context) {
     // Add animated shader background to BACKGROUND painter (renders first, behind everything)
     if let Some(shader) = &app.splash_shader {
         let rect = ctx.content_rect();
-        
+
         let callback = egui_wgpu::Callback::new_paint_callback(
             rect,
             ShaderCallback {
                 shader: shader.clone(),
-                audio_bass: 0.0,   // No audio on splash screen
-                audio_mid: 0.0,
-                audio_high: 0.0,
+                bass_energy: app.bass_energy.clone(),   // Share app's audio energy (will be 0.0 on splash)
+                mid_energy: app.mid_energy.clone(),
+                high_energy: app.high_energy.clone(),
             },
         );
-        
+
         // Use background painter instead of debug_painter so UI renders on top
         ctx.layer_painter(egui::LayerId::background()).add(callback);
     } else {

@@ -1,6 +1,6 @@
 use eframe::egui;
 use crate::app::player_app::MusicPlayerApp;
-use crate::utils::shader::ShaderCallback;
+use crate::utils::{ShaderCallback, MultiPassCallback};
 
 /// Now Playing screen - Shows current track with large artwork, shader background, and audio-reactive glow
 pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
@@ -19,25 +19,32 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
     // Get current track from queue
     if let Some(current_track) = app.playback_queue.current_track() {
         // Render shader background for Now Playing view
-        if let Some(shader) = &app.track_metadata_shader {
-            let rect = ui.max_rect();
-            
-            // Read real FFT data
-            let bass = app.bass_energy.lock().map(|b| *b).unwrap_or(0.0);
-            let mid = app.mid_energy.lock().map(|m| *m).unwrap_or(0.0);
-            let high = app.high_energy.lock().map(|h| *h).unwrap_or(0.0);
-            
+        // Prefer multi-pass if available, fallback to single-pass
+        let rect = ui.max_rect();
+
+        if let Some(multi_shader) = &app.multi_pass_shader {
+            // Use multi-pass shader (supports BufferA-D from editor exports)
+            let callback = egui_wgpu::Callback::new_paint_callback(
+                rect,
+                MultiPassCallback {
+                    shader: multi_shader.clone(),
+                    bass_energy: app.bass_energy.clone(),
+                    mid_energy: app.mid_energy.clone(),
+                    high_energy: app.high_energy.clone(),
+                },
+            );
+            ui.painter().add(callback);
+        } else if let Some(shader) = &app.track_metadata_shader {
+            // Fallback to single-pass shader (backward compatibility)
             let callback = egui_wgpu::Callback::new_paint_callback(
                 rect,
                 ShaderCallback {
                     shader: shader.clone(),
-                    audio_bass: bass,
-                    audio_mid: mid,
-                    audio_high: high,
+                    bass_energy: app.bass_energy.clone(),
+                    mid_energy: app.mid_energy.clone(),
+                    high_energy: app.high_energy.clone(),
                 },
             );
-            
-            // Render shader on background
             ui.painter().add(callback);
         }
         
@@ -189,25 +196,32 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
 /// Render fallback view using stored track info
 fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     // Render shader background for Now Playing view
-    if let Some(shader) = &app.track_metadata_shader {
-        let rect = ui.max_rect();
-        
-        // Read real FFT data
-        let bass = app.bass_energy.lock().map(|b| *b).unwrap_or(0.0);
-        let mid = app.mid_energy.lock().map(|m| *m).unwrap_or(0.0);
-        let high = app.high_energy.lock().map(|h| *h).unwrap_or(0.0);
-        
+    // Prefer multi-pass if available, fallback to single-pass
+    let rect = ui.max_rect();
+
+    if let Some(multi_shader) = &app.multi_pass_shader {
+        // Use multi-pass shader (supports BufferA-D from editor exports)
+        let callback = egui_wgpu::Callback::new_paint_callback(
+            rect,
+            MultiPassCallback {
+                shader: multi_shader.clone(),
+                bass_energy: app.bass_energy.clone(),
+                mid_energy: app.mid_energy.clone(),
+                high_energy: app.high_energy.clone(),
+            },
+        );
+        ui.painter().add(callback);
+    } else if let Some(shader) = &app.track_metadata_shader {
+        // Fallback to single-pass shader (backward compatibility)
         let callback = egui_wgpu::Callback::new_paint_callback(
             rect,
             ShaderCallback {
                 shader: shader.clone(),
-                audio_bass: bass,
-                audio_mid: mid,
-                audio_high: high,
+                bass_energy: app.bass_energy.clone(),
+                mid_energy: app.mid_energy.clone(),
+                high_energy: app.high_energy.clone(),
             },
         );
-        
-        // Render shader on background
         ui.painter().add(callback);
     }
     

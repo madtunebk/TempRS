@@ -189,9 +189,14 @@ pub struct MusicPlayerApp {
     pub history_sort_order: crate::screens::history::HistorySortOrder, // Sort order
 
     // Shader pipeline for background effects (lazy loaded per screen)
-    pub splash_shader: Option<std::sync::Arc<crate::utils::shader::ShaderPipeline>>,
-    pub track_metadata_shader: Option<std::sync::Arc<crate::utils::shader::ShaderPipeline>>,
-    
+    pub splash_shader: Option<std::sync::Arc<crate::utils::ShaderPipeline>>,
+    pub track_metadata_shader: Option<std::sync::Arc<crate::utils::ShaderPipeline>>,
+    pub multi_pass_shader: Option<std::sync::Arc<crate::utils::MultiPassPipelines>>,
+
+    // Shader hot-reload system (checksum-based)
+    pub shader_checksum: Option<String>,
+    pub last_shader_check: Instant,
+
     // WGPU resources for lazy shader loading
     pub wgpu_device: Option<std::sync::Arc<egui_wgpu::wgpu::Device>>,
     pub wgpu_format: Option<egui_wgpu::wgpu::TextureFormat>,
@@ -406,7 +411,12 @@ impl Default for MusicPlayerApp {
             // Shader pipeline for background effects (lazy loaded)
             splash_shader: None,
             track_metadata_shader: None,
-            
+            multi_pass_shader: None,
+
+            // Shader hot-reload system
+            shader_checksum: None,
+            last_shader_check: Instant::now(),
+
             // WGPU resources for lazy loading
             wgpu_device: None,
             wgpu_format: None,
@@ -438,18 +448,89 @@ impl MusicPlayerApp {
             app.wgpu_device = Some(std::sync::Arc::new(device.clone()));
             app.wgpu_format = Some(format);
             
-            // Splash screen shader (Nebula Drift)
+            // Splash screen shader (Nebula Drift) - use new pipeline with validation
             let splash_wgsl = include_str!("../shaders/splash_bg.wgsl");
-            let splash_pipeline = crate::utils::shader::ShaderPipeline::new(device, format, splash_wgsl);
-            app.splash_shader = Some(std::sync::Arc::new(splash_pipeline));
-            log::info!("[Shader] Loaded splash shader (Nebula Drift)");
-            
+            match crate::utils::ShaderPipeline::new(device, format, splash_wgsl) {
+                Ok(splash_pipeline) => {
+                    app.splash_shader = Some(std::sync::Arc::new(splash_pipeline));
+                    log::info!("[Shader] Loaded splash shader (Nebula Drift)");
+                }
+                Err(e) => {
+                    log::error!("[Shader] Failed to load splash shader: {}", e);
+                }
+            }
+
             // Track metadata shader (loaded but only used if component is shown)
             let metadata_wgsl = include_str!("../shaders/track_metadata_bg.wgsl");
-            let metadata_pipeline = crate::utils::shader::ShaderPipeline::new(device, format, metadata_wgsl);
-            app.track_metadata_shader = Some(std::sync::Arc::new(metadata_pipeline));
-            log::info!("[Shader] Loaded track metadata shader");
-            
+            match crate::utils::ShaderPipeline::new(device, format, metadata_wgsl) {
+                Ok(metadata_pipeline) => {
+                    app.track_metadata_shader = Some(std::sync::Arc::new(metadata_pipeline));
+                    log::info!("[Shader] Loaded track metadata shader");
+                }
+                Err(e) => {
+                    log::error!("[Shader] Failed to load track metadata shader: {}", e);
+                }
+            }
+
+            // Try to load multi-pass shader pipeline from JSON (optional, falls back to single-pass)
+            let screen_size = [1920, 1080]; // Default size, buffers will resize on first render
+
+            // Try to load shader from cache folder first, then fallback to embedded
+            let shader_cache_path = crate::utils::cache::get_cache_dir().join("shaders").join("shader.json");
+            let json_shader = if shader_cache_path.exists() {
+                match std::fs::read_to_string(&shader_cache_path) {
+                    Ok(content) => {
+                        log::info!("[Shader] Loading shader from cache: {:?}", shader_cache_path);
+                        Some(content)
+                    }
+                    Err(e) => {
+                        log::warn!("[Shader] Failed to read shader from cache: {}, falling back to embedded", e);
+                        None
+                    }
+                }
+            } else {
+                log::info!("[Shader] No cached shader found, using embedded default");
+                None
+            };
+
+            // Fallback to embedded shader if cache load failed
+            let json_shader = json_shader.unwrap_or_else(|| {
+                include_str!("../assets/shards/demo_multipass.json").to_string()
+            });
+
+            // Compute checksum for hot-reload detection
+            use sha2::{Sha256, Digest};
+            let mut hasher = Sha256::new();
+            hasher.update(json_shader.as_bytes());
+            let checksum = format!("{:x}", hasher.finalize());
+            app.shader_checksum = Some(checksum);
+
+            match crate::utils::ShaderJson::from_json(&json_shader) {
+                Ok(shader_json) => {
+                    let multipass_shaders = shader_json.to_shader_map();
+                    let buffer_count = multipass_shaders.len() - 1; // Exclude MainImage
+
+                    match crate::utils::MultiPassPipelines::new(device, format, screen_size, &multipass_shaders) {
+                        Ok(multi_pipeline) => {
+                            app.multi_pass_shader = Some(std::sync::Arc::new(multi_pipeline));
+                            if buffer_count > 0 {
+                                log::info!("[Shader] Loaded multi-pass shader from JSON ({} buffers + MainImage)", buffer_count);
+                            } else {
+                                log::info!("[Shader] Loaded single-pass shader from JSON (MainImage only)");
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("[Shader] Multi-pass shader pipeline creation failed: {}", e);
+                            log::warn!("[Shader] This might be due to malformed or incompatible shader code");
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("[Shader] Failed to parse JSON shader: {}", e);
+                    log::warn!("[Shader] Shader file might be malformed or corrupted");
+                }
+            }
+
             log::info!("[Shader] All shaders initialized. Format: {:?}", format);
         } else {
             log::warn!("[Shader] WGPU render state not available");
@@ -707,7 +788,10 @@ impl MusicPlayerApp {
         if self.track_metadata_shader.is_some() {
             self.track_metadata_shader = None;
         }
-        
+        if self.multi_pass_shader.is_some() {
+            self.multi_pass_shader = None;
+        }
+
         log::info!("[Shutdown] Cleanup complete, closing application...");
         
         // Close the application
@@ -1253,9 +1337,15 @@ impl MusicPlayerApp {
         // Reinitialize splash shader for logout screen
         if let (Some(device), Some(format)) = (&self.wgpu_device, self.wgpu_format) {
             let splash_wgsl = include_str!("../shaders/splash_bg.wgsl");
-            let splash_pipeline = crate::utils::shader::ShaderPipeline::new(device, format, splash_wgsl);
-            self.splash_shader = Some(std::sync::Arc::new(splash_pipeline));
-            log::info!("[Shader] Reinitialized splash shader for logout");
+            match crate::utils::ShaderPipeline::new(device, format, splash_wgsl) {
+                Ok(splash_pipeline) => {
+                    self.splash_shader = Some(std::sync::Arc::new(splash_pipeline));
+                    log::info!("[Shader] Reinitialized splash shader for logout");
+                }
+                Err(e) => {
+                    log::error!("[Shader] Failed to reinitialize splash shader: {}", e);
+                }
+            }
         } else {
             log::warn!("[Shader] Cannot reinitialize splash shader - WGPU resources not available");
         }
@@ -2013,10 +2103,81 @@ impl MusicPlayerApp {
             }
         }
     }
+
+    /// Check if cached shader has changed and hot-reload if needed
+    fn check_shader_hot_reload(&mut self) {
+        let shader_cache_path = crate::utils::cache::get_cache_dir().join("shaders").join("shader.json");
+
+        // Only check if file exists
+        if !shader_cache_path.exists() {
+            return;
+        }
+
+        // Read file and compute checksum
+        let json_content = match std::fs::read_to_string(&shader_cache_path) {
+            Ok(content) => content,
+            Err(_) => return, // Silent fail - file might be being written
+        };
+
+        // Compute new checksum
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+        hasher.update(json_content.as_bytes());
+        let new_checksum = format!("{:x}", hasher.finalize());
+
+        // Check if checksum changed
+        if let Some(old_checksum) = &self.shader_checksum {
+            if &new_checksum == old_checksum {
+                return; // No change
+            }
+        }
+
+        log::info!("[Shader] Detected shader file change, hot-reloading...");
+
+        // Try to reload shader with same fallback logic
+        match crate::utils::ShaderJson::from_json(&json_content) {
+            Ok(shader_json) => {
+                let multipass_shaders = shader_json.to_shader_map();
+                let buffer_count = multipass_shaders.len() - 1;
+
+                // Get WGPU resources
+                if let (Some(device), Some(format)) = (&self.wgpu_device, &self.wgpu_format) {
+                    let screen_size = [1920, 1080];
+
+                    match crate::utils::MultiPassPipelines::new(device, *format, screen_size, &multipass_shaders) {
+                        Ok(multi_pipeline) => {
+                            self.multi_pass_shader = Some(std::sync::Arc::new(multi_pipeline));
+                            self.shader_checksum = Some(new_checksum);
+
+                            if buffer_count > 0 {
+                                log::info!("[Shader] ✓ Hot-reloaded multi-pass shader ({} buffers + MainImage)", buffer_count);
+                            } else {
+                                log::info!("[Shader] ✓ Hot-reloaded single-pass shader (MainImage only)");
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("[Shader] ✗ Hot-reload failed: {}", e);
+                            log::warn!("[Shader] Keeping previous shader - fix errors and save again");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("[Shader] ✗ Hot-reload failed to parse JSON: {}", e);
+                log::warn!("[Shader] Keeping previous shader - fix JSON and save again");
+            }
+        }
+    }
 }
 
 impl eframe::App for MusicPlayerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        // Check for shader hot-reload every 2 seconds
+        if self.last_shader_check.elapsed() > Duration::from_secs(2) {
+            self.check_shader_hot_reload();
+            self.last_shader_check = Instant::now();
+        }
+
         // Handle close request - cleanup and exit immediately
         if ctx.input(|i| i.viewport().close_requested()) {
             if !self.is_shutting_down {

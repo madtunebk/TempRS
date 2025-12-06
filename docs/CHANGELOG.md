@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2025-12-06
+
+### Added
+- **Multi-Pass Shader Pipeline**: Advanced shader rendering system
+  - Support for 4 offscreen buffers (Buffer A-D) + MainImage compositor
+  - JSON shader format with base64 encoding support
+  - Shader hot-reload system with checksum-based file watching (2s interval)
+  - Naga-based WGSL validation with detailed error messages
+  - Graceful degradation when buffer shaders are missing/invalid
+  - Auto-injection of boilerplate (Uniforms, VSOut, vertex shader, texture bindings)
+  - 5 shader entry points: vs_main, fs_main, fs_buffer_a-d
+  - Shared sampler with linear filtering and clamp-to-edge addressing
+  - Demo multi-pass shader included (`demo_multipass.json`)
+
+- **Shader Utilities**: Comprehensive shader infrastructure
+  - `errors.rs`: Typed shader error system (Compilation/Validation/Device/Unknown)
+  - `pipeline.rs`: Single-pass shader rendering (backward compatible)
+  - `multi_buffer_pipeline.rs`: Multi-pass rendering with offscreen textures
+  - `shader_json.rs`: JSON shader parser with base64 decode support
+  - `shader_validator.rs`: Naga-based WGSL validation with helpful messages
+  - `shader_constants.rs`: Centralized boilerplate definitions
+
+- **Shader Integration**: Editor export compatibility
+  - Load shaders from `~/.cache/TempRS/shaders/shader.json`
+  - Fallback to embedded demo shader if cache missing
+  - Hot-reload workflow: edit in external editor → save → auto-reload in player
+  - Support for both single-pass and multi-pass exports
+  - Seamless upgrade path from old single-pass shaders
+
+- **Documentation**: Shader pipeline and setup guides
+  - `PIPELINE_SPEC.md`: Technical specification for multi-pass rendering
+  - `SETUP.md`: Integration guide for shader editor + TempRS workflow
+  - `README.md`: Shader file format and usage documentation
+
+### Changed
+- **Now Playing View**: Multi-pass shader background support
+  - Prefers multi-pass shader if available, falls back to single-pass
+  - Both shaders share same audio energy data (bass/mid/high)
+  - Semi-transparent overlay for text readability
+
+- **Splash Screen**: Updated audio uniforms
+  - Changed from hardcoded (0.0) to shared app audio energy
+  - Consistent shader interface across all screens
+
+- **Shader System Architecture**: Modular and maintainable
+  - Split old `shader.rs` into 6 specialized modules
+  - Clean separation of concerns (pipeline/validation/errors/JSON)
+  - Re-exports in `utils/mod.rs` for easy importing
+  - Better error messages with naga integration
+
+### Fixed
+- **Shader Validation**: Early error detection
+  - Catch missing uniforms struct before pipeline creation
+  - Validate entry points and attributes
+  - Detailed error messages with line numbers (when available)
+  - Prevent crashes from malformed shaders
+
+- **Colors Module**: Missing `#[allow(dead_code)]` on OVERLAY_BADGE
+  - Fixed compiler warning for unused constant
+
 ## [0.2.1] - 2025-12-05
 
 ### Added

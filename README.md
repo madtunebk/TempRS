@@ -48,6 +48,17 @@ cargo build --release
 - Non-blocking: FFT runs in dedicated thread, never blocks audio playback
 - Accurate beat detection locked to actual playback samples
 
+✅ **Multi-Pass Shader System**
+- Offscreen buffer rendering (Buffer A-D) with MainImage compositor
+- Hot-reload workflow: edit external JSON shader → auto-reload in player (2s check)
+- JSON format with base64 encoding support for safe storage
+- WGSL validation with naga (early error detection with helpful messages)
+- Graceful degradation: missing buffers render black, no crashes
+- Auto-injection: uniforms, vertex shader, texture bindings (no boilerplate needed)
+- Compatible with shader editor exports (see `docs/SETUP.md`)
+- Demo shader included (`src/assets/shards/demo_multipass.json`)
+- Single-pass fallback for backward compatibility
+
 ✅ **Smart Caching**
 - Hybrid filesystem + SQLite metadata caching
 - Artwork caching with placeholder tracking (prevents retry loops)
@@ -79,11 +90,11 @@ cargo build --release
 - **UI**: egui 0.33 / eframe (with wgpu backend)
 - **Audio**: rodio 0.19 + minimp3 0.5
 - **FFT Analysis**: rustfft 6.2 (real-time frequency analysis)
+- **Shader System**: WGSL shaders via egui-wgpu with naga validation
 - **HTTP**: reqwest 0.12 (with streaming support)
 - **Async**: tokio 1.43
 - **Storage**: rusqlite 0.32 (encrypted tokens, cache metadata, playback history)
 - **Encryption**: AES-256-GCM (ring crate)
-- **Shaders**: WGSL via egui-wgpu integration
 
 ## Performance
 
@@ -223,7 +234,12 @@ src/
 │   ├── fingerprint.rs      # Machine fingerprinting
 │   ├── cache.rs            # Hybrid caching (filesystem + DB)
 │   ├── playback_history.rs # Local playback tracking
-│   ├── shader.rs           # WGSL shader pipeline
+│   ├── pipeline.rs         # Single-pass shader rendering
+│   ├── multi_buffer_pipeline.rs # Multi-pass shader rendering (Buffer A-D)
+│   ├── shader_json.rs      # JSON shader parser with base64 support
+│   ├── shader_validator.rs # WGSL validation with naga
+│   ├── shader_constants.rs # Centralized shader boilerplate
+│   ├── errors.rs           # Shader error types
 │   ├── audio_analyzer.rs   # Audio analysis utilities
 │   ├── audio_fft.rs        # FFT audio visualization
 │   ├── artwork.rs          # Artwork loading & caching
@@ -242,7 +258,14 @@ src/
 ├── shaders/
 │   ├── splash_bg.wgsl      # Splash screen background shader
 │   ├── track_metadata_bg.wgsl # Track metadata background shader
-│   └── plasma.wgsl         # Plasma effect shader
+│   ├── plasma.wgsl         # Plasma effect shader
+│   ├── multipass_*.wgsl    # Placeholder multi-pass shaders
+│   └── shader.wgsls        # Legacy multi-pass shader export
+├── assets/
+│   ├── shards/
+│   │   ├── demo_multipass.json # Demo multi-pass shader (JSON format)
+│   │   └── shader_format.md    # JSON shader format documentation
+│   └── fonts/              # Icon fonts and regular fonts
 └── app_state.rs            # Global app state (Arc<RwLock>)
 ```
 
@@ -252,8 +275,23 @@ src/
 - **Cache DB**: `~/.cache/TempRS/cache.db` (metadata: URLs, hashes, timestamps)
 - **Artwork**: `~/.cache/TempRS/artwork/` (SHA256-named files)
 - **Sidebar Artwork**: `~/.cache/TempRS/sidebar_artwork/`
+- **Shaders**: `~/.cache/TempRS/shaders/shader.json` (hot-reloadable shader exports)
 - **Playback History**: `~/.config/TempRS/playback_history.db` (local tracking)
 - **No audio files stored** (streaming only)
+
+## Shader System
+
+TempRS supports audio-reactive WGSL shaders with multi-pass rendering:
+
+- **Single-pass**: Simple shaders with one fragment function (backward compatible)
+- **Multi-pass**: 4 offscreen buffers (Buffer A-D) + MainImage compositor
+- **Hot-reload**: Edit shader JSON in `~/.cache/TempRS/shaders/` → auto-reload every 2s
+- **Editor integration**: Compatible with shader editor exports (see `docs/SETUP.md`)
+
+For shader pipeline specification and editor setup, see:
+- [`docs/PIPELINE_SPEC.md`](docs/PIPELINE_SPEC.md) - Technical specification
+- [`docs/SETUP.md`](docs/SETUP.md) - Editor integration guide
+- [`src/assets/shards/shader_format.md`](src/assets/shards/shader_format.md) - JSON format
 
 ## Contributing
 

@@ -53,7 +53,7 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
         ui.painter().rect_filled(
             overlay_rect,
             0.0,
-            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 120),  // 47% opacity - nice balance
+            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 76),  // 30% opacity
         );
         
         render_track_details(app, ui, &current_track);

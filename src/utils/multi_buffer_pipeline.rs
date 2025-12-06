@@ -8,6 +8,7 @@ use eframe::wgpu::{
     FilterMode, Queue, RenderPipeline, Sampler, SamplerDescriptor, Texture, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
 };
+use eframe::wgpu::util::DeviceExt;
 
 // Re-export ShaderUniforms from pipeline module
 pub use crate::utils::pipeline::ShaderUniforms;
@@ -120,9 +121,21 @@ pub struct MultiPassPipelines {
 impl MultiPassPipelines {
     pub fn new(
         device: &Device,
+        queue: &eframe::wgpu::Queue,
         format: TextureFormat,
         screen_size: [u32; 2],
         sources: &std::collections::HashMap<BufferKind, String>,
+    ) -> Result<Self, ShaderError> {
+        Self::new_with_images(device, queue, format, screen_size, sources, &[None, None, None, None])
+    }
+
+    pub fn new_with_images(
+        device: &Device,
+        queue: &eframe::wgpu::Queue,
+        format: TextureFormat,
+        screen_size: [u32; 2],
+        sources: &std::collections::HashMap<BufferKind, String>,
+        embedded_images: &[Option<Vec<u8>>; 4],
     ) -> Result<Self, ShaderError> {
         log::info!(
             "Creating multi-pass shader pipeline (resolution: {}x{})",
@@ -241,6 +254,86 @@ impl MultiPassPipelines {
                 // Sampler D @binding(7)
                 eframe::wgpu::BindGroupLayoutEntry {
                     binding: 7,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Sampler(
+                        eframe::wgpu::SamplerBindingType::Filtering,
+                    ),
+                    count: None,
+                },
+                // User image texture iChannel0 @binding(8)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Texture {
+                        sample_type: eframe::wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: eframe::wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // User image sampler iChannel0 @binding(9)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 9,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Sampler(
+                        eframe::wgpu::SamplerBindingType::Filtering,
+                    ),
+                    count: None,
+                },
+                // User image texture iChannel1 @binding(10)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 10,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Texture {
+                        sample_type: eframe::wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: eframe::wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // User image sampler iChannel1 @binding(11)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 11,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Sampler(
+                        eframe::wgpu::SamplerBindingType::Filtering,
+                    ),
+                    count: None,
+                },
+                // User image texture iChannel2 @binding(12)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 12,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Texture {
+                        sample_type: eframe::wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: eframe::wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // User image sampler iChannel2 @binding(13)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 13,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Sampler(
+                        eframe::wgpu::SamplerBindingType::Filtering,
+                    ),
+                    count: None,
+                },
+                // User image texture iChannel3 @binding(14)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 14,
+                    visibility: eframe::wgpu::ShaderStages::FRAGMENT,
+                    ty: eframe::wgpu::BindingType::Texture {
+                        sample_type: eframe::wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: eframe::wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // User image sampler iChannel3 @binding(15)
+                eframe::wgpu::BindGroupLayoutEntry {
+                    binding: 15,
                     visibility: eframe::wgpu::ShaderStages::FRAGMENT,
                     ty: eframe::wgpu::BindingType::Sampler(
                         eframe::wgpu::SamplerBindingType::Filtering,
@@ -595,6 +688,52 @@ impl MultiPassPipelines {
         // Create dummy texture for any missing buffers
         let (_dummy_tex, dummy_view) = create_color_target(device, [1, 1], format, "dummy_texture");
         
+        // Load embedded user images (iChannel0-3) if provided
+        let mut user_image_views: [Option<TextureView>; 4] = [None, None, None, None];
+        let mut _user_image_textures: [Option<Texture>; 4] = [None, None, None, None];
+        
+        for (i, image_data_opt) in embedded_images.iter().enumerate() {
+            if let Some(image_bytes) = image_data_opt {
+                // Decode image from bytes
+                match image::load_from_memory(image_bytes) {
+                    Ok(img) => {
+                        let rgba = img.to_rgba8();
+                        let (width, height) = rgba.dimensions();
+                        
+                        let size = eframe::wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        };
+                        
+                        let texture = device.create_texture_with_data(
+                            queue,
+                            &eframe::wgpu::TextureDescriptor {
+                                label: Some(&format!("ichannel{}_texture", i)),
+                                size,
+                                mip_level_count: 1,
+                                sample_count: 1,
+                                dimension: eframe::wgpu::TextureDimension::D2,
+                                format,
+                                usage: eframe::wgpu::TextureUsages::TEXTURE_BINDING | eframe::wgpu::TextureUsages::COPY_DST,
+                                view_formats: &[],
+                            },
+                            eframe::wgpu::util::TextureDataOrder::LayerMajor,
+                            &rgba,
+                        );
+                        
+                        let view = texture.create_view(&eframe::wgpu::TextureViewDescriptor::default());
+                        _user_image_textures[i] = Some(texture);
+                        user_image_views[i] = Some(view);
+                        log::info!("Created texture for iChannel{} ({}x{}) and uploaded {} bytes", i, width, height, rgba.len());
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to decode embedded image {}: {}", i, e);
+                    }
+                }
+            }
+        }
+        
         let main_tex_bg = device.create_bind_group(&eframe::wgpu::BindGroupDescriptor {
             label: Some("main_texture_bg"),
             layout: &texture_bgl,
@@ -645,6 +784,54 @@ impl MultiPassPipelines {
                 // Sampler D @binding(7)
                 eframe::wgpu::BindGroupEntry {
                     binding: 7,
+                    resource: eframe::wgpu::BindingResource::Sampler(&sampler),
+                },
+                // User image texture iChannel0 @binding(8)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: eframe::wgpu::BindingResource::TextureView(
+                        user_image_views[0].as_ref().unwrap_or(&dummy_view)
+                    ),
+                },
+                // User image sampler iChannel0 @binding(9)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: eframe::wgpu::BindingResource::Sampler(&sampler),
+                },
+                // User image texture iChannel1 @binding(10)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: eframe::wgpu::BindingResource::TextureView(
+                        user_image_views[1].as_ref().unwrap_or(&dummy_view)
+                    ),
+                },
+                // User image sampler iChannel1 @binding(11)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 11,
+                    resource: eframe::wgpu::BindingResource::Sampler(&sampler),
+                },
+                // User image texture iChannel2 @binding(12)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 12,
+                    resource: eframe::wgpu::BindingResource::TextureView(
+                        user_image_views[2].as_ref().unwrap_or(&dummy_view)
+                    ),
+                },
+                // User image sampler iChannel2 @binding(13)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 13,
+                    resource: eframe::wgpu::BindingResource::Sampler(&sampler),
+                },
+                // User image texture iChannel3 @binding(14)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 14,
+                    resource: eframe::wgpu::BindingResource::TextureView(
+                        user_image_views[3].as_ref().unwrap_or(&dummy_view)
+                    ),
+                },
+                // User image sampler iChannel3 @binding(15)
+                eframe::wgpu::BindGroupEntry {
+                    binding: 15,
                     resource: eframe::wgpu::BindingResource::Sampler(&sampler),
                 },
             ],

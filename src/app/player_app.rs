@@ -199,6 +199,7 @@ pub struct MusicPlayerApp {
 
     // WGPU resources for lazy shader loading
     pub wgpu_device: Option<std::sync::Arc<egui_wgpu::wgpu::Device>>,
+    pub wgpu_queue: Option<std::sync::Arc<egui_wgpu::wgpu::Queue>>,
     pub wgpu_format: Option<egui_wgpu::wgpu::TextureFormat>,
     
     // Splash screen timer
@@ -419,6 +420,7 @@ impl Default for MusicPlayerApp {
 
             // WGPU resources for lazy loading
             wgpu_device: None,
+            wgpu_queue: None,
             wgpu_format: None,
             
             // UI state
@@ -442,10 +444,12 @@ impl MusicPlayerApp {
         // Initialize shaders if WGPU is available
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             let device = &render_state.device;
+            let queue = &render_state.queue;
             let format = render_state.target_format;
             
             // Store WGPU resources for later shader reinitialization (e.g., after logout)
             app.wgpu_device = Some(std::sync::Arc::new(device.clone()));
+            app.wgpu_queue = Some(std::sync::Arc::new(queue.clone()));
             app.wgpu_format = Some(format);
             
             // Splash screen shader (Nebula Drift) - use new pipeline with validation
@@ -508,9 +512,10 @@ impl MusicPlayerApp {
             match crate::utils::ShaderJson::from_json(&json_shader) {
                 Ok(shader_json) => {
                     let multipass_shaders = shader_json.to_shader_map();
+                    let embedded_images = shader_json.decode_embedded_images();
                     let buffer_count = multipass_shaders.len() - 1; // Exclude MainImage
 
-                    match crate::utils::MultiPassPipelines::new(device, format, screen_size, &multipass_shaders) {
+                    match crate::utils::MultiPassPipelines::new_with_images(device, queue, format, screen_size, &multipass_shaders, &embedded_images) {
                         Ok(multi_pipeline) => {
                             app.multi_pass_shader = Some(std::sync::Arc::new(multi_pipeline));
                             if buffer_count > 0 {
@@ -2138,13 +2143,14 @@ impl MusicPlayerApp {
         match crate::utils::ShaderJson::from_json(&json_content) {
             Ok(shader_json) => {
                 let multipass_shaders = shader_json.to_shader_map();
+                let embedded_images = shader_json.decode_embedded_images();
                 let buffer_count = multipass_shaders.len() - 1;
 
                 // Get WGPU resources
-                if let (Some(device), Some(format)) = (&self.wgpu_device, &self.wgpu_format) {
+                if let (Some(device), Some(queue), Some(format)) = (&self.wgpu_device, &self.wgpu_queue, &self.wgpu_format) {
                     let screen_size = [1920, 1080];
 
-                    match crate::utils::MultiPassPipelines::new(device, *format, screen_size, &multipass_shaders) {
+                    match crate::utils::MultiPassPipelines::new_with_images(device, queue, *format, screen_size, &multipass_shaders, &embedded_images) {
                         Ok(multi_pipeline) => {
                             self.multi_pass_shader = Some(std::sync::Arc::new(multi_pipeline));
                             self.shader_checksum = Some(new_checksum);

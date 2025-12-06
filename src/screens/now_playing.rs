@@ -141,32 +141,47 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
     ui.vertical_centered(|ui| {
         ui.add_space(60.0);
         
-        // Track title with text shadow for readability
+        // Track title with strong outline/stroke effect
         let title_pos = ui.cursor().min;
-        // Shadow layers (multiple for stronger effect)
-        for offset in [(2.0, 2.0), (-2.0, 2.0), (2.0, -2.0), (-2.0, -2.0), (0.0, 3.0)] {
-            ui.painter().text(
-                egui::pos2(title_pos.x + offset.0, title_pos.y + offset.1),
-                egui::Align2::CENTER_TOP,
-                &app.current_title,
-                egui::FontId::proportional(28.0),
-                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
-            );
+        let title_font = egui::FontId::proportional(28.0);
+        
+        // Outer black stroke (thick)
+        for distance in [4.0, 3.0, 2.0] {
+            for angle in 0..16 {
+                let rad = (angle as f32) * std::f32::consts::PI / 8.0;
+                let offset_x = rad.cos() * distance;
+                let offset_y = rad.sin() * distance;
+                ui.painter().text(
+                    egui::pos2(title_pos.x + offset_x, title_pos.y + offset_y),
+                    egui::Align2::CENTER_TOP,
+                    &app.current_title,
+                    title_font.clone(),
+                    egui::Color32::BLACK,
+                );
+            }
         }
-        // Actual text
+        // Actual white text on top
         ui.label(egui::RichText::new(&app.current_title).size(28.0).strong().color(egui::Color32::WHITE));
         ui.add_space(10.0);
         
-        // Artist name with shadow (SoundCloud orange)
+        // Artist name with strong outline
         let artist_pos = ui.cursor().min;
-        for offset in [(1.5, 1.5), (-1.5, 1.5), (1.5, -1.5), (-1.5, -1.5)] {
-            ui.painter().text(
-                egui::pos2(artist_pos.x + offset.0, artist_pos.y + offset.1),
-                egui::Align2::CENTER_TOP,
-                &track.user.username,
-                egui::FontId::proportional(20.0),
-                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
-            );
+        let artist_font = egui::FontId::proportional(20.0);
+        
+        // Outer black stroke
+        for distance in [3.0, 2.0] {
+            for angle in 0..16 {
+                let rad = (angle as f32) * std::f32::consts::PI / 8.0;
+                let offset_x = rad.cos() * distance;
+                let offset_y = rad.sin() * distance;
+                ui.painter().text(
+                    egui::pos2(artist_pos.x + offset_x, artist_pos.y + offset_y),
+                    egui::Align2::CENTER_TOP,
+                    &track.user.username,
+                    artist_font.clone(),
+                    egui::Color32::BLACK,
+                );
+            }
         }
         ui.label(egui::RichText::new(&track.user.username).size(20.0).color(egui::Color32::from_rgb(255, 85, 0)));
         
@@ -240,34 +255,48 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         ui.painter().add(callback);
     }
     
-    // No overlay - use text shadows for readability
+    // No overlay - use text outlines for readability
     ui.vertical_centered(|ui| {
         ui.add_space(60.0);
         
-        // Track title with shadow
+        // Track title with strong outline
         let title_pos = ui.cursor().min;
-        for offset in [(2.0, 2.0), (-2.0, 2.0), (2.0, -2.0), (-2.0, -2.0), (0.0, 3.0)] {
-            ui.painter().text(
-                egui::pos2(title_pos.x + offset.0, title_pos.y + offset.1),
-                egui::Align2::CENTER_TOP,
-                &app.current_title,
-                egui::FontId::proportional(28.0),
-                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
-            );
+        let title_font = egui::FontId::proportional(28.0);
+        
+        for distance in [4.0, 3.0, 2.0] {
+            for angle in 0..16 {
+                let rad = (angle as f32) * std::f32::consts::PI / 8.0;
+                let offset_x = rad.cos() * distance;
+                let offset_y = rad.sin() * distance;
+                ui.painter().text(
+                    egui::pos2(title_pos.x + offset_x, title_pos.y + offset_y),
+                    egui::Align2::CENTER_TOP,
+                    &app.current_title,
+                    title_font.clone(),
+                    egui::Color32::BLACK,
+                );
+            }
         }
         ui.label(egui::RichText::new(&app.current_title).size(28.0).strong().color(egui::Color32::WHITE));
         ui.add_space(10.0);
         
-        // Artist name with shadow
+        // Artist name with outline
         let artist_pos = ui.cursor().min;
-        for offset in [(1.5, 1.5), (-1.5, 1.5), (1.5, -1.5), (-1.5, -1.5)] {
-            ui.painter().text(
-                egui::pos2(artist_pos.x + offset.0, artist_pos.y + offset.1),
-                egui::Align2::CENTER_TOP,
-                &app.current_artist,
-                egui::FontId::proportional(20.0),
-                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
-            );
+        let artist_font = egui::FontId::proportional(20.0);
+        
+        for distance in [3.0, 2.0] {
+            for angle in 0..16 {
+                let rad = (angle as f32) * std::f32::consts::PI / 8.0;
+                let offset_x = rad.cos() * distance;
+                let offset_y = rad.sin() * distance;
+                ui.painter().text(
+                    egui::pos2(artist_pos.x + offset_x, artist_pos.y + offset_y),
+                    egui::Align2::CENTER_TOP,
+                    &app.current_artist,
+                    artist_font.clone(),
+                    egui::Color32::BLACK,
+                );
+            }
         }
         ui.label(egui::RichText::new(&app.current_artist).size(20.0).color(egui::Color32::from_rgb(255, 85, 0)));
         

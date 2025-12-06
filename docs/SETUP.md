@@ -1,129 +1,138 @@
-# Setup Guide - Editor + TempRS Integration
+# Setup Guide - Shader Editor + TempRS Integration
 
-## Directory Structure
+## Overview
 
-```
-wgsls_editor/               # Shader editor (https://github.com/madtunebk/wgsls_editor)
-├── .TMRS/                  # Shared shader files (gitignored)
-│   ├── shaders/            # Exported .wgsls files
-│   ├── README.md           # Usage guide
-│   ├── PIPELINE_SPEC.md    # Technical pipeline spec
-│   └── SETUP.md            # This file
-├── TempRS/                 # TempRS repo (gitignored, clone separately)
-└── src/                    # Editor source code
-```
+TempRS supports audio-reactive WGSL shaders with multi-pass rendering. You can create shaders using the [wgsls_editor](https://github.com/madtunebk/wgsls_editor) and have them hot-reload in TempRS automatically.
 
-## Step 1: Clone Repos
+## Step 1: Install wgsls_editor
 
 ```bash
 # Clone shader editor
 git clone https://github.com/madtunebk/wgsls_editor.git
 cd wgsls_editor/
-
-# Clone TempRS inside editor directory (optional, for integrated workflow)
-git clone https://github.com/madtunebk/TempRS.git
+cargo build --release
 ```
 
-Both repos remain separate with independent git histories.
-
-## Step 2: Align TempRS Pipeline
-
-Copy the multi-pass pipeline code from the editor to TempRS:
-
-**Files to reference:**
-- `src/utils/multi_buffer_pipeline.rs` - Full pipeline implementation
-- `src/utils/shader_constants.rs` - Shared constants
-
-**What TempRS needs:**
-1. Parse shader for multiple entry points (`fs_main_image`, `fs_buffer_a`, etc.)
-2. Create 5 pipelines (one per entry point)
-3. Create 4 offscreen textures (Buffer A-D outputs)
-4. Create texture bind group (group 1, bindings 0-7)
-5. Render in order: A → B → C → D → MainImage
-
-See `PIPELINE_SPEC.md` for detailed architecture.
-
-## Step 3: Workflow
+## Step 2: Shader Workflow
 
 ### Creating Shaders
 
-1. **Edit in shader editor:**
-   - Run: `cargo run` (in wgsls_editor/)
+1. **Edit in wgsls_editor:**
+   ```bash
+   cd wgsls_editor/
+   cargo run --release
+   ```
    - Create multi-pass shader using Buffer A-D tabs
-   - Test with audio reactivity
+   - Test with audio reactivity in the editor preview
+   - MainImage tab combines all buffers
 
-2. **Export:**
-   - Click "Export" button
-   - Saves to `.TMRS/shaders/` by default
-   - File includes all boilerplate and bindings
+2. **Export to JSON:**
+   - Click "Export" button in the editor
+   - Save as JSON format
+   - Copy exported JSON to: `~/.cache/TempRS/shaders/shader.json`
 
-3. **Run in TempRS:**
-   - TempRS loads from `.TMRS/shaders/`
-   - Renders with same multi-pass pipeline
-   - Full audio integration
+3. **Auto-reload in TempRS:**
+   - TempRS checks for changes every 2 seconds
+   - Validates shader with naga before loading
+   - Falls back to previous shader if validation fails
+   - No restart needed - changes appear automatically!
 
-### File Format
+### File Locations
 
-Exported `.wgsls` files contain:
-- ✅ Boilerplate (Uniforms, VSOut structs)
-- ✅ Texture bindings (for multi-pass)
-- ✅ Vertex shader (vs_main)
-- ✅ All fragment shaders (fs_main_image, fs_buffer_a, etc.)
+**TempRS reads from:**
+- `~/.cache/TempRS/shaders/shader.json` - Your custom shader (hot-reloadable)
+- Fallback: `src/assets/shards/demo_multipass.json` (embedded, if cache missing)
 
-**Self-contained** - No manual editing needed!
+**Editor exports to:**
+- Any location you choose when clicking "Export"
+- Manually copy to TempRS cache folder for hot-reload
 
-## Step 4: Git Ignore
+### Shader Format
 
-Both `.TMRS/` and `TempRS/` are already in `.gitignore`:
+The JSON format supports both single-pass and multi-pass shaders:
 
-```gitignore
-# TempRS integration
-TempRS/                  # TempRS repo (separate git)
-.TMRS/                   # Shared shader files
+**Single-pass** (minimal):
+```json
+{
+  "version": "1.0",
+  "fragment": "@fragment\nfn fs_main(in: VSOut) -> @location(0) vec4<f32> { ... }"
+}
 ```
 
-This keeps:
-- ✅ Editor repo clean (no TempRS commits)
-- ✅ TempRS repo clean (no editor commits)
-- ✅ Shader files local (not version controlled)
+**Multi-pass** (full):
+```json
+{
+  "version": "1.0",
+  "encoding": "base64",
+  "fragment": "base64_encoded_mainimage_shader",
+  "buffer_a": "base64_encoded_buffer_a_shader",
+  "buffer_b": "base64_encoded_buffer_b_shader",
+  "buffer_c": "base64_encoded_buffer_c_shader",
+  "buffer_d": "base64_encoded_buffer_d_shader"
+}
+```
+
+**Auto-injection:**
+TempRS automatically injects:
+- ✅ Uniforms struct (time, audio_bass, audio_mid, audio_high, resolution)
+- ✅ VSOut struct (position, uv)
+- ✅ Vertex shader (vs_main) - if not provided
+- ✅ Texture bindings (group 1) - only for MainImage if buffers exist
+
+You only write the fragment shader logic!
+
+## Step 3: Development Cycle
+
+**Rapid iteration workflow:**
+
+1. Edit shader in wgsls_editor → test in editor preview
+2. Export to JSON → copy to `~/.cache/TempRS/shaders/shader.json`
+3. TempRS auto-reloads within 2 seconds
+4. See changes in Now Playing view immediately
+5. Repeat!
+
+**No need to:**
+- Restart TempRS
+- Recompile anything
+- Manually inject boilerplate
 
 ## Tips
 
-### Debugging Exports
+### Debugging
 
-Run with debug logging to see export structure:
+**Enable shader logging:**
 ```bash
-RUST_LOG=debug cargo run
+RUST_LOG=debug cargo run --release --bin TempRS
 ```
 
-When you export, you'll see:
+**Watch for validation errors:**
 ```
-=== EXPORT DEBUG ===
-Export length: 5432 bytes
-Export preview (first 500 chars):
-// Exported: 2025-12-05 19:50:00
-...
-===================
+[Shader] Hot-reload failed: validation error at line 42
+[Shader] Keeping previous shader - fix errors and save again
 ```
 
-### Testing Pipeline Alignment
+### Testing
 
-1. Export demo shader from editor
-2. Load in TempRS
-3. Should render identical output
-4. Audio reactivity should match
+1. Start with demo shader: `src/assets/shards/demo_multipass.json`
+2. Export from editor and compare outputs
+3. Audio reactivity should match between editor and TempRS
 
 ### Common Issues
 
-**"unknown identifier: buffer_a_texture"**
-- TempRS needs texture bindings (group 1)
-- See `PIPELINE_SPEC.md` for bind group layout
+**"Shader validation failed"**
+- Check naga error message in logs
+- Verify uniforms struct matches expected structure
+- Ensure fragment function returns `vec4<f32>`
 
-**"redefinition of fs_main"**
-- Old export format (fixed)
-- Re-export shader with unique names
+**"File not found"**
+- Create cache directory: `mkdir -p ~/.cache/TempRS/shaders/`
+- Check file permissions
+- Verify JSON is valid (not corrupted)
 
-**Empty/black buffers**
+**"Shader not reloading"**
+- Wait at least 2 seconds after saving
+- Check file modification time changed
+- Look for validation errors in logs
 - Buffer shader missing or invalid
 - Check TempRS logs for validation errors
 - Gracefully skips missing buffers

@@ -48,14 +48,7 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
             ui.painter().add(callback);
         }
         
-        // Semi-transparent overlay for readability (lighter than before)
-        let overlay_rect = ui.max_rect();
-        ui.painter().rect_filled(
-            overlay_rect,
-            0.0,
-            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 76),  // 30% opacity
-        );
-        
+        // No overlay - use text shadows instead for readability
         render_track_details(app, ui, &current_track);
     } else {
         // Fallback: use stored current track info
@@ -148,11 +141,33 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
     ui.vertical_centered(|ui| {
         ui.add_space(60.0);
         
-        // Track title first
+        // Track title with text shadow for readability
+        let title_pos = ui.cursor().min;
+        // Shadow layers (multiple for stronger effect)
+        for offset in [(2.0, 2.0), (-2.0, 2.0), (2.0, -2.0), (-2.0, -2.0), (0.0, 3.0)] {
+            ui.painter().text(
+                egui::pos2(title_pos.x + offset.0, title_pos.y + offset.1),
+                egui::Align2::CENTER_TOP,
+                &app.current_title,
+                egui::FontId::proportional(28.0),
+                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
+            );
+        }
+        // Actual text
         ui.label(egui::RichText::new(&app.current_title).size(28.0).strong().color(egui::Color32::WHITE));
         ui.add_space(10.0);
         
-        // Artist name (SoundCloud orange)
+        // Artist name with shadow (SoundCloud orange)
+        let artist_pos = ui.cursor().min;
+        for offset in [(1.5, 1.5), (-1.5, 1.5), (1.5, -1.5), (-1.5, -1.5)] {
+            ui.painter().text(
+                egui::pos2(artist_pos.x + offset.0, artist_pos.y + offset.1),
+                egui::Align2::CENTER_TOP,
+                &track.user.username,
+                egui::FontId::proportional(20.0),
+                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
+            );
+        }
         ui.label(egui::RichText::new(&track.user.username).size(20.0).color(egui::Color32::from_rgb(255, 85, 0)));
         
         ui.add_space(100.0);
@@ -225,22 +240,35 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         ui.painter().add(callback);
     }
     
-    // Semi-transparent overlay for readability (lighter than before)
-    let overlay_rect = ui.max_rect();
-    ui.painter().rect_filled(
-        overlay_rect,
-        0.0,
-        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 120),  // 47% opacity - nice balance
-    );
-    
+    // No overlay - use text shadows for readability
     ui.vertical_centered(|ui| {
         ui.add_space(60.0);
         
-        // Track title first
+        // Track title with shadow
+        let title_pos = ui.cursor().min;
+        for offset in [(2.0, 2.0), (-2.0, 2.0), (2.0, -2.0), (-2.0, -2.0), (0.0, 3.0)] {
+            ui.painter().text(
+                egui::pos2(title_pos.x + offset.0, title_pos.y + offset.1),
+                egui::Align2::CENTER_TOP,
+                &app.current_title,
+                egui::FontId::proportional(28.0),
+                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
+            );
+        }
         ui.label(egui::RichText::new(&app.current_title).size(28.0).strong().color(egui::Color32::WHITE));
         ui.add_space(10.0);
         
-        // Artist name (SoundCloud orange)
+        // Artist name with shadow
+        let artist_pos = ui.cursor().min;
+        for offset in [(1.5, 1.5), (-1.5, 1.5), (1.5, -1.5), (-1.5, -1.5)] {
+            ui.painter().text(
+                egui::pos2(artist_pos.x + offset.0, artist_pos.y + offset.1),
+                egui::Align2::CENTER_TOP,
+                &app.current_artist,
+                egui::FontId::proportional(20.0),
+                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
+            );
+        }
         ui.label(egui::RichText::new(&app.current_artist).size(20.0).color(egui::Color32::from_rgb(255, 85, 0)));
         
         ui.add_space(50.0);

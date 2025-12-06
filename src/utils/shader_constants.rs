@@ -28,6 +28,31 @@ struct VSOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
 }
+
+// User-loaded image textures (iChannel0-3 - ShaderToy compatible)
+@group(1) @binding(8)
+var iChannel0: texture_2d<f32>;
+
+@group(1) @binding(9)
+var iChannel0Sampler: sampler;
+
+@group(1) @binding(10)
+var iChannel1: texture_2d<f32>;
+
+@group(1) @binding(11)
+var iChannel1Sampler: sampler;
+
+@group(1) @binding(12)
+var iChannel2: texture_2d<f32>;
+
+@group(1) @binding(13)
+var iChannel2Sampler: sampler;
+
+@group(1) @binding(14)
+var iChannel3: texture_2d<f32>;
+
+@group(1) @binding(15)
+var iChannel3Sampler: sampler;
 "#;
 
 /// Standard vertex shader auto-injected if user doesn't provide one

@@ -56,3 +56,4 @@ tools.txt
 # === Prebuild backups and testing ===
 prebuild_backups/
 .env
+.ref_wgsls_editor/

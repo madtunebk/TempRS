@@ -69,12 +69,22 @@ impl BufferPass {
 }
 
 /// Helper: create an offscreen texture for a buffer
+/// IMPORTANT: Converts sRGB formats to linear to prevent double gamma correction
 fn create_color_target(
     device: &Device,
     size: [u32; 2],
     format: TextureFormat,
     label: &str,
 ) -> (Texture, TextureView) {
+    // Convert sRGB surface format to linear for offscreen buffers
+    // This prevents double gamma correction (shader -> sRGB buffer -> sRGB screen)
+    let linear_format = match format {
+        TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8Unorm,
+        TextureFormat::Bgra8UnormSrgb => TextureFormat::Bgra8Unorm,
+        // Already linear formats pass through unchanged
+        _ => format,
+    };
+    
     let texture = device.create_texture(&TextureDescriptor {
         label: Some(label),
         size: Extent3d {
@@ -85,7 +95,7 @@ fn create_color_target(
         mip_level_count: 1,
         sample_count: 1,
         dimension: TextureDimension::D2,
-        format,
+        format: linear_format,  // Use linear format for offscreen buffers
         usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
@@ -383,6 +393,13 @@ impl MultiPassPipelines {
                         let (buffer_a_tex, buffer_a_view) =
                             create_color_target(device, screen_size, format, "buffer_a_target");
 
+                        // Get linear format for offscreen buffer (create_color_target already converted it)
+                        let linear_format = match format {
+                            TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8Unorm,
+                            TextureFormat::Bgra8UnormSrgb => TextureFormat::Bgra8Unorm,
+                            _ => format,
+                        };
+
                         let buffer_a_pipeline_layout =
                             device.create_pipeline_layout(&eframe::wgpu::PipelineLayoutDescriptor {
                                 label: Some("buffer_a_pipeline_layout"),
@@ -405,8 +422,8 @@ impl MultiPassPipelines {
                                     entry_point: Some("fs_main"),
                                     compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
                                     targets: &[Some(eframe::wgpu::ColorTargetState {
-                                        format,
-                                        blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
+                                        format: linear_format,  // Use linear format for offscreen buffer
+                                        blend: Some(eframe::wgpu::BlendState::REPLACE),
                                         write_mask: eframe::wgpu::ColorWrites::ALL,
                                     })],
                                 }),
@@ -452,6 +469,12 @@ impl MultiPassPipelines {
                         });
                         let (buffer_b_tex, buffer_b_view) =
                             create_color_target(device, screen_size, format, "buffer_b_target");
+                        // Get linear format for offscreen buffer
+                        let linear_format = match format {
+                            TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8Unorm,
+                            TextureFormat::Bgra8UnormSrgb => TextureFormat::Bgra8Unorm,
+                            _ => format,
+                        };
                         let buffer_b_pipeline_layout =
                             device.create_pipeline_layout(&eframe::wgpu::PipelineLayoutDescriptor {
                                 label: Some("buffer_b_pipeline_layout"),
@@ -473,8 +496,8 @@ impl MultiPassPipelines {
                                     entry_point: Some("fs_main"),
                                     compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
                                     targets: &[Some(eframe::wgpu::ColorTargetState {
-                                        format,
-                                        blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
+                                        format: linear_format,  // Use linear for offscreen
+                                        blend: Some(eframe::wgpu::BlendState::REPLACE),
                                         write_mask: eframe::wgpu::ColorWrites::ALL,
                                     })],
                                 }),
@@ -519,6 +542,12 @@ impl MultiPassPipelines {
                         });
                         let (buffer_c_tex, buffer_c_view) =
                             create_color_target(device, screen_size, format, "buffer_c_target");
+                        // Get linear format for offscreen buffer
+                        let linear_format = match format {
+                            TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8Unorm,
+                            TextureFormat::Bgra8UnormSrgb => TextureFormat::Bgra8Unorm,
+                            _ => format,
+                        };
                         let buffer_c_pipeline_layout =
                             device.create_pipeline_layout(&eframe::wgpu::PipelineLayoutDescriptor {
                                 label: Some("buffer_c_pipeline_layout"),
@@ -540,8 +569,8 @@ impl MultiPassPipelines {
                                     entry_point: Some("fs_main"),
                                     compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
                                     targets: &[Some(eframe::wgpu::ColorTargetState {
-                                        format,
-                                        blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
+                                        format: linear_format,  // Use linear for offscreen
+                                        blend: Some(eframe::wgpu::BlendState::REPLACE),
                                         write_mask: eframe::wgpu::ColorWrites::ALL,
                                     })],
                                 }),
@@ -586,6 +615,12 @@ impl MultiPassPipelines {
                         });
                         let (buffer_d_tex, buffer_d_view) =
                             create_color_target(device, screen_size, format, "buffer_d_target");
+                        // Get linear format for offscreen buffer
+                        let linear_format = match format {
+                            TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8Unorm,
+                            TextureFormat::Bgra8UnormSrgb => TextureFormat::Bgra8Unorm,
+                            _ => format,
+                        };
                         let buffer_d_pipeline_layout =
                             device.create_pipeline_layout(&eframe::wgpu::PipelineLayoutDescriptor {
                                 label: Some("buffer_d_pipeline_layout"),
@@ -607,8 +642,8 @@ impl MultiPassPipelines {
                                     entry_point: Some("fs_main"),
                                     compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
                                     targets: &[Some(eframe::wgpu::ColorTargetState {
-                                        format,
-                                        blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
+                                        format: linear_format,  // Use linear for offscreen
+                                        blend: Some(eframe::wgpu::BlendState::REPLACE),
                                         write_mask: eframe::wgpu::ColorWrites::ALL,
                                     })],
                                 }),
@@ -673,7 +708,7 @@ impl MultiPassPipelines {
                     compilation_options: eframe::wgpu::PipelineCompilationOptions::default(),
                     targets: &[Some(eframe::wgpu::ColorTargetState {
                         format,
-                        blend: Some(eframe::wgpu::BlendState::ALPHA_BLENDING),
+                        blend: Some(eframe::wgpu::BlendState::REPLACE),
                         write_mask: eframe::wgpu::ColorWrites::ALL,
                     })],
                 }),

@@ -741,13 +741,8 @@ impl MultiPassPipelines {
                             depth_or_array_layers: 1,
                         };
                         
-                        // Use linear format for user images to prevent gamma correction
-                        let linear_format = match format {
-                            TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8Unorm,
-                            TextureFormat::Bgra8UnormSrgb => TextureFormat::Bgra8Unorm,
-                            _ => format,
-                        };
-                        
+                        // Keep sRGB format for user images (they're pre-gamma-encoded)
+                        // Only buffer passes need linear format
                         let texture = device.create_texture_with_data(
                             queue,
                             &eframe::wgpu::TextureDescriptor {
@@ -756,7 +751,7 @@ impl MultiPassPipelines {
                                 mip_level_count: 1,
                                 sample_count: 1,
                                 dimension: eframe::wgpu::TextureDimension::D2,
-                                format: linear_format,  // Use linear format for embedded images
+                                format,  // Use original sRGB format for embedded images
                                 usage: eframe::wgpu::TextureUsages::TEXTURE_BINDING | eframe::wgpu::TextureUsages::COPY_DST,
                                 view_formats: &[],
                             },

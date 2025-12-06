@@ -286,12 +286,13 @@ TempRS supports audio-reactive WGSL shaders with multi-pass rendering:
 - **Single-pass**: Simple shaders with one fragment function (backward compatible)
 - **Multi-pass**: 4 offscreen buffers (Buffer A-D) + MainImage compositor
 - **Hot-reload**: Edit shader JSON in `~/.cache/TempRS/shaders/` → auto-reload every 2s
-- **Editor integration**: Compatible with shader editor exports (see `docs/SETUP.md`)
+- **Editor integration**: Compatible with [wgsls_editor](https://github.com/madtunebk/wgsls_editor) exports
 
 For shader pipeline specification and editor setup, see:
 - [`docs/PIPELINE_SPEC.md`](docs/PIPELINE_SPEC.md) - Technical specification
 - [`docs/SETUP.md`](docs/SETUP.md) - Editor integration guide
 - [`src/assets/shards/shader_format.md`](src/assets/shards/shader_format.md) - JSON format
+- [wgsls_editor](https://github.com/madtunebk/wgsls_editor) - WGSL shader editor with multi-pass support
 
 ## Contributing
 

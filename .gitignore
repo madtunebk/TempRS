@@ -57,3 +57,4 @@ tools.txt
 prebuild_backups/
 .env
 .ref_wgsls_editor/
+.temprs/

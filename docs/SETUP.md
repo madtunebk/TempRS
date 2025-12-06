@@ -3,7 +3,7 @@
 ## Directory Structure
 
 ```
-egui_two_windows/           # Shader editor (this repo)
+wgsls_editor/               # Shader editor (https://github.com/madtunebk/wgsls_editor)
 ├── .TMRS/                  # Shared shader files (gitignored)
 │   ├── shaders/            # Exported .wgsls files
 │   ├── README.md           # Usage guide
@@ -13,10 +13,14 @@ egui_two_windows/           # Shader editor (this repo)
 └── src/                    # Editor source code
 ```
 
-## Step 1: Clone TempRS
+## Step 1: Clone Repos
 
 ```bash
-cd egui_two_windows/
+# Clone shader editor
+git clone https://github.com/madtunebk/wgsls_editor.git
+cd wgsls_editor/
+
+# Clone TempRS inside editor directory (optional, for integrated workflow)
 git clone https://github.com/madtunebk/TempRS.git
 ```
 
@@ -44,7 +48,7 @@ See `PIPELINE_SPEC.md` for detailed architecture.
 ### Creating Shaders
 
 1. **Edit in shader editor:**
-   - Run: `cargo run` (in egui_two_windows/)
+   - Run: `cargo run` (in wgsls_editor/)
    - Create multi-pass shader using Buffer A-D tabs
    - Test with audio reactivity
 

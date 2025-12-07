@@ -697,18 +697,8 @@ impl MultiPassPipelines {
                 // Decode image from bytes
                 match image::load_from_memory(image_bytes) {
                     Ok(img) => {
-                        log::info!("iChannel{}: Decoded image format: {:?}, color type: {:?}, channels: {}", 
-                            i, img.color(), img.color(), img.color().channel_count());
-                        let mut rgba = img.to_rgba8();
+                        let rgba = img.to_rgba8();
                         let (width, height) = rgba.dimensions();
-                        
-                        // Swap R and B channels if format is BGRA (Windows/some platforms use BGRA byte order)
-                        if matches!(format, TextureFormat::Bgra8UnormSrgb | TextureFormat::Bgra8Unorm) {
-                            log::info!("iChannel{}: Swapping R<->B channels for BGRA format", i);
-                            for pixel in rgba.pixels_mut() {
-                                pixel.0.swap(0, 2); // Swap R and B channels (RGBA -> BGRA)
-                            }
-                        }
                         
                         let size = eframe::wgpu::Extent3d {
                             width,
@@ -716,8 +706,8 @@ impl MultiPassPipelines {
                             depth_or_array_layers: 1,
                         };
                         
-                        // Use sRGB format for user images to preserve full colors
-                        // Images are re-encoded as proper PNG during export with correct color space
+                        // Use Rgba8UnormSrgb for embedded images (not surface format)
+                        // This preserves colors correctly without channel swapping
                         let texture = device.create_texture_with_data(
                             queue,
                             &eframe::wgpu::TextureDescriptor {
@@ -726,7 +716,7 @@ impl MultiPassPipelines {
                                 mip_level_count: 1,
                                 sample_count: 1,
                                 dimension: eframe::wgpu::TextureDimension::D2,
-                                format,  // Use original sRGB format to preserve colors
+                                format: eframe::wgpu::TextureFormat::Rgba8UnormSrgb,  // Use RGBA, not surface BGRA
                                 usage: eframe::wgpu::TextureUsages::TEXTURE_BINDING | eframe::wgpu::TextureUsages::COPY_DST,
                                 view_formats: &[],
                             },
@@ -915,6 +905,7 @@ pub struct MultiPassCallback {
     pub bass_energy: Arc<std::sync::Mutex<f32>>,
     pub mid_energy: Arc<std::sync::Mutex<f32>>,
     pub high_energy: Arc<std::sync::Mutex<f32>>,
+    pub gamma: Arc<std::sync::Mutex<f32>>,
 }
 
 impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
@@ -936,6 +927,7 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
         let bass = *self.bass_energy.lock().unwrap();
         let mid = *self.mid_energy.lock().unwrap();
         let high = *self.high_energy.lock().unwrap();
+        let gamma = *self.gamma.lock().unwrap();
 
         let uniforms = ShaderUniforms {
             time: elapsed,
@@ -943,7 +935,7 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
             audio_mid: mid,
             audio_high: high,
             resolution,
-            gamma: 1.0,  // No gamma correction (adjust manually if needed)
+            gamma,
             _pad0: 0.0,
         };
 

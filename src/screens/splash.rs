@@ -7,7 +7,7 @@ pub fn render_splash_screen(app: &mut MusicPlayerApp, ctx: &egui::Context) {
     ctx.request_repaint_after(std::time::Duration::from_millis(16));
     
     // Add animated shader background to BACKGROUND painter (renders first, behind everything)
-    if let Some(shader) = &app.splash_shader {
+    if let Some(shader) = app.shader_manager.splash() {
         let rect = ctx.content_rect();
 
         let callback = egui_wgpu::Callback::new_paint_callback(
@@ -17,6 +17,7 @@ pub fn render_splash_screen(app: &mut MusicPlayerApp, ctx: &egui::Context) {
                 bass_energy: app.bass_energy.clone(),   // Share app's audio energy (will be 0.0 on splash)
                 mid_energy: app.mid_energy.clone(),
                 high_energy: app.high_energy.clone(),
+                gamma: app.shader_manager.gamma(),
             },
         );
 

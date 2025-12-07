@@ -15,8 +15,10 @@ pub struct ShaderManager {
     pub multi_pass_shader: Option<Arc<MultiPassPipelines>>,
     pub track_metadata_shader: Option<Arc<ShaderPipeline>>,
     
-    // Gamma correction (shared across shaders)
+    // Color correction values (shared across shaders)
     pub gamma: Arc<Mutex<f32>>,
+    pub contrast: Arc<Mutex<f32>>,
+    pub saturation: Arc<Mutex<f32>>,
     
     // Hot-reload state
     shader_checksum: Option<String>,
@@ -35,7 +37,9 @@ impl ShaderManager {
             splash_shader: None,
             multi_pass_shader: None,
             track_metadata_shader: None,
-            gamma: Arc::new(Mutex::new(2.2)),
+            gamma: Arc::new(Mutex::new(1.0)),       // Default: no gamma correction
+            contrast: Arc::new(Mutex::new(1.0)),    // Default: normal contrast
+            saturation: Arc::new(Mutex::new(1.0)),  // Default: normal saturation
             shader_checksum: None,
             last_hot_reload_check: Instant::now(),
             wgpu_device: None,
@@ -149,10 +153,20 @@ impl ShaderManager {
         
         match ShaderJson::from_json(json_str) {
             Ok(shader_json) => {
-                // **GAMMA LOADING - SINGLE SOURCE OF TRUTH**
+                // **COLOR CORRECTION LOADING - SINGLE SOURCE OF TRUTH**
                 if let Some(gamma_value) = shader_json.gamma {
                     *self.gamma.lock().unwrap() = gamma_value;
                     log::info!("[ShaderManager] Loaded gamma: {}", gamma_value);
+                }
+                
+                if let Some(contrast_value) = shader_json.contrast {
+                    *self.contrast.lock().unwrap() = contrast_value;
+                    log::info!("[ShaderManager] Loaded contrast: {}", contrast_value);
+                }
+                
+                if let Some(saturation_value) = shader_json.saturation {
+                    *self.saturation.lock().unwrap() = saturation_value;
+                    log::info!("[ShaderManager] Loaded saturation: {}", saturation_value);
                 }
                 
                 let multipass_shaders = shader_json.to_shader_map();
@@ -239,6 +253,16 @@ impl ShaderManager {
     /// Get gamma reference for shader rendering
     pub fn gamma(&self) -> Arc<Mutex<f32>> {
         Arc::clone(&self.gamma)
+    }
+    
+    /// Get contrast reference for shader rendering
+    pub fn contrast(&self) -> Arc<Mutex<f32>> {
+        Arc::clone(&self.contrast)
+    }
+    
+    /// Get saturation reference for shader rendering
+    pub fn saturation(&self) -> Arc<Mutex<f32>> {
+        Arc::clone(&self.saturation)
     }
     
     /// Get multi-pass shader if available

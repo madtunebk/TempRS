@@ -49,6 +49,8 @@ fn main() -> Result<(), eframe::Error> {
             .with_maximized(false)                // Don't start maximized
             .with_decorations(true)               // OS window decorations enabled
             .with_icon(icon_data),
+        vsync: false,                             // Disable vsync for higher FPS
+        persist_window: true,                     // Remember window position
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             present_mode: eframe::egui_wgpu::wgpu::PresentMode::Fifo,

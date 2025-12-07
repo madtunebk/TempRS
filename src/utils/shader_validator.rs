@@ -1,4 +1,5 @@
 //! WGSL Shader Validation
+#![allow(dead_code)]
 //! 
 //! Validates shaders before passing to pipeline to catch errors early
 //! and provide helpful error messages in the UI.
@@ -74,20 +75,19 @@ fn validate_wgsl_constructs(wgsl_src: &str) -> Result<(), ShaderError> {
 
 /// Validate that the Uniforms struct matches our expected structure
 fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
-    // Expected fields in exact order (must match ShaderUniforms in pipeline.rs)
-    let expected_fields = [
+    // Required fields (must be present)
+    let required_fields = [
         "time: f32",
         "audio_bass: f32",
-        "audio_mid: f32", 
+        "audio_mid: f32",
         "audio_high: f32",
         "resolution: vec2<f32>",
-        "_pad0: vec2<f32>",
     ];
     
     // Check if shader defines a Uniforms struct
     if !wgsl_src.contains("struct Uniforms") {
         return Err(ShaderError::ValidationError(
-            "Shader must define a 'struct Uniforms' matching the pipeline structure.\n\nExpected:\nstruct Uniforms {\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    _pad0: vec2<f32>,\n}".to_string()
+            "Shader must define a 'struct Uniforms' matching the pipeline structure.\n\nExpected:\nstruct Uniforms {\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    gamma: f32,\n    _pad0: f32,\n}".to_string()
         ));
     }
     
@@ -98,15 +98,22 @@ fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
             if let Some(end_brace) = wgsl_src[start_brace..].find('}') {
                 let struct_body = &wgsl_src[start_brace + 1..start_brace + end_brace];
                 
-                // Check each expected field
-                for field in &expected_fields {
-                    let field_name = field.split(':').next().unwrap().trim();
+                // Check required fields only (gamma is optional for backward compatibility)
+                for field in &required_fields {
                     if !struct_body.contains(field) {
                         return Err(ShaderError::ValidationError(format!(
-                            "Uniforms struct mismatch!\n\nMissing or incorrect field: {}\n\nExpected struct (32 bytes total):\n\nstruct Uniforms {{\n    time: f32,\n    audio_bass: f32,\n    audio_mid: f32,\n    audio_high: f32,\n    resolution: vec2<f32>,\n    _pad0: vec2<f32>,\n}}\n\nYour struct is missing or has the wrong type for field: '{}'",
-                            field, field_name
+                            "Uniforms struct mismatch!\n\nMissing field: {}\n\nRequired fields:\n{:?}",
+                            field, required_fields
                         )));
                     }
+                }
+                
+                // Validate padding format (either old or new is fine)
+                let has_new_format = struct_body.contains("gamma: f32") && struct_body.contains("_pad0: f32");
+                let has_old_format = struct_body.contains("_pad0: vec2<f32>");
+                
+                if !has_new_format && !has_old_format {
+                    log::warn!("Shader uses non-standard padding format - this may cause issues");
                 }
             }
         }
@@ -123,7 +130,6 @@ fn validate_uniforms_struct(wgsl_src: &str) -> Result<(), ShaderError> {
 }
 
 /// Validate required shader entry points and attributes
-#[allow(dead_code)]
 fn validate_entry_points(wgsl_src: &str) -> Result<(), ShaderError> {
     validate_entry_points_with_fragment(wgsl_src, "fs_main")
 }

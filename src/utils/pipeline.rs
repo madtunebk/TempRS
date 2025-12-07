@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -14,8 +15,10 @@ pub struct ShaderUniforms {
     pub audio_mid: f32,
     pub audio_high: f32,
     pub resolution: [f32; 2],
-    pub gamma: f32,        // Gamma correction value (default 1.0 = no correction)
-    pub _pad0: f32,
+    pub gamma: f32,
+    pub contrast: f32,
+    pub saturation: f32,
+    pub _pad0: f32,  // Padding for 16-byte alignment (11 floats, need 1 more for 12)
 }
 
 // Shader pipeline wrapper
@@ -128,6 +131,9 @@ pub struct ShaderCallback {
     pub bass_energy: Arc<std::sync::Mutex<f32>>,
     pub mid_energy: Arc<std::sync::Mutex<f32>>,
     pub high_energy: Arc<std::sync::Mutex<f32>>,
+    pub gamma: Arc<std::sync::Mutex<f32>>,
+    pub contrast: Arc<std::sync::Mutex<f32>>,
+    pub saturation: Arc<std::sync::Mutex<f32>>,
 }
 
 impl egui_wgpu::CallbackTrait for ShaderCallback {
@@ -149,6 +155,9 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
         let bass = *self.bass_energy.lock().unwrap();
         let mid = *self.mid_energy.lock().unwrap();
         let high = *self.high_energy.lock().unwrap();
+        let gamma = *self.gamma.lock().unwrap();
+        let contrast = *self.contrast.lock().unwrap();
+        let saturation = *self.saturation.lock().unwrap();
 
         let uniforms = ShaderUniforms {
             time: elapsed,
@@ -156,7 +165,9 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
             audio_mid: mid,
             audio_high: high,
             resolution,
-            gamma: 1.0,
+            gamma,
+            contrast,
+            saturation,
             _pad0: 0.0,
         };
 

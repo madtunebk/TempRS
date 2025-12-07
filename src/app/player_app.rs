@@ -1969,6 +1969,9 @@ impl MusicPlayerApp {
 
 impl eframe::App for MusicPlayerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        // Request repaint with 120 FPS cap (8.33ms per frame) for smooth shader animation
+        ctx.request_repaint_after(std::time::Duration::from_micros(8333));
+
         // Check for shader hot-reload (delegated to ShaderManager)
         self.shader_manager.check_hot_reload();
 

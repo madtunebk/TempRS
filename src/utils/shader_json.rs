@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::utils::BufferKind;
@@ -46,6 +47,18 @@ pub struct ShaderJson {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ichannel3: Option<String>,
+
+    /// Gamma correction value (default: 1.0 = no correction)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gamma: Option<f32>,
+
+    /// Contrast adjustment (default: 1.0 = normal)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contrast: Option<f32>,
+
+    /// Saturation adjustment (default: 1.0 = normal)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saturation: Option<f32>,
 }
 
 fn default_version() -> String {
@@ -85,24 +98,28 @@ impl ShaderJson {
     }
 
     /// Encode shader code to base64 for safe JSON storage
-    #[allow(dead_code)]
     pub fn encode_to_base64(code: &str) -> String {
         base64::Engine::encode(&base64::engine::general_purpose::STANDARD, code.as_bytes())
     }
 
-    /// Decode embedded images from base64 to raw bytes for GPU upload
+    /// Decode embedded base64 images to raw PNG/JPEG bytes
+    /// Returns array of Option<Vec<u8>> for iChannel0-3
     pub fn decode_embedded_images(&self) -> [Option<Vec<u8>>; 4] {
-        let images = [
-            self.ichannel0.as_ref().and_then(|s| decode_base64_bytes(s)),
-            self.ichannel1.as_ref().and_then(|s| decode_base64_bytes(s)),
-            self.ichannel2.as_ref().and_then(|s| decode_base64_bytes(s)),
-            self.ichannel3.as_ref().and_then(|s| decode_base64_bytes(s)),
-        ];
+        let mut images = [None, None, None, None];
         
-        // Log what we decoded
-        for (i, img) in images.iter().enumerate() {
-            if let Some(bytes) = img {
-                log::info!("Decoded embedded image {} ({} bytes)", i, bytes.len());
+        let channels = [&self.ichannel0, &self.ichannel1, &self.ichannel2, &self.ichannel3];
+        
+        for (i, channel) in channels.iter().enumerate() {
+            if let Some(base64_data) = channel {
+                match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_data) {
+                    Ok(bytes) => {
+                        log::info!("Decoded embedded image for iChannel{} ({} bytes)", i, bytes.len());
+                        images[i] = Some(bytes);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to decode base64 for iChannel{}: {}", i, e);
+                    }
+                }
             }
         }
         
@@ -120,7 +137,7 @@ impl ShaderJson {
             || self.buffer_c.is_some()
             || self.buffer_d.is_some();
 
-        // Use centralized boilerplate from shader_constants (includes iChannel0)
+        // Use centralized boilerplate from shader_constants (includes iChannel0-3)
         let boilerplate = SHADER_BOILERPLATE;
 
         // Vertex shader (use provided or standard default)
@@ -171,14 +188,6 @@ fn decode_base64(encoded: &str) -> Option<String> {
         .decode(encoded.as_bytes())
         .ok()
         .and_then(|bytes| String::from_utf8(bytes).ok())
-}
-
-/// Decode base64 string to raw bytes (for images)
-fn decode_base64_bytes(encoded: &str) -> Option<Vec<u8>> {
-    use base64::Engine;
-    base64::engine::general_purpose::STANDARD
-        .decode(encoded.as_bytes())
-        .ok()
 }
 
 #[cfg(test)]

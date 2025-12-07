@@ -32,6 +32,8 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
                     mid_energy: app.mid_energy.clone(),
                     high_energy: app.high_energy.clone(),
                     gamma: app.shader_manager.gamma(),
+                    contrast: app.shader_manager.contrast(),
+                    saturation: app.shader_manager.saturation(),
                 },
             );
             ui.painter().add(callback);
@@ -45,6 +47,8 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
                     mid_energy: app.mid_energy.clone(),
                     high_energy: app.high_energy.clone(),
                     gamma: app.shader_manager.gamma(),
+                    contrast: app.shader_manager.contrast(),
+                    saturation: app.shader_manager.saturation(),
                 },
             );
             ui.painter().add(callback);
@@ -244,6 +248,8 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 mid_energy: app.mid_energy.clone(),
                 high_energy: app.high_energy.clone(),
                 gamma: app.shader_manager.gamma(),
+                contrast: app.shader_manager.contrast(),
+                saturation: app.shader_manager.saturation(),
             },
         );
         ui.painter().add(callback);
@@ -257,6 +263,8 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 mid_energy: app.mid_energy.clone(),
                 high_energy: app.high_energy.clone(),
                 gamma: app.shader_manager.gamma(),
+                contrast: app.shader_manager.contrast(),
+                saturation: app.shader_manager.saturation(),
             },
         );
         ui.painter().add(callback);

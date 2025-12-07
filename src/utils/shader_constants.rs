@@ -16,10 +16,12 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
 }
 "#;
 
-/// Default fragment shader code (simple gradient for fallback)
+/// Default fragment shader code (simple blue for fallback)
 pub const DEFAULT_FRAGMENT: &str = r#"@fragment
-fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.uv.x, in.uv.y, 0.5, 1.0);
+fn fs_main(_in: VSOut) -> @location(0) vec4<f32> {
+    var color = vec4<f32>(0.0, 0.0, 1.0, 1.0); // pure blue
+       
+    return color;
 }
 "#;
 

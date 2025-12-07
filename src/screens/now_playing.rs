@@ -22,7 +22,7 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
         // Prefer multi-pass if available, fallback to single-pass
         let rect = ui.max_rect();
 
-        if let Some(multi_shader) = app.shader_manager.multi_pass() {
+        if let Some(multi_shader) = &app.shader_manager.multi_pass_shader {
             // Use multi-pass shader (supports BufferA-D from editor exports)
             let callback = egui_wgpu::Callback::new_paint_callback(
                 rect,
@@ -37,7 +37,7 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
                 },
             );
             ui.painter().add(callback);
-        } else if let Some(shader) = app.shader_manager.track_metadata() {
+        } else if let Some(shader) = &app.shader_manager.track_metadata_shader {
             // Fallback to single-pass shader (backward compatibility)
             let callback = egui_wgpu::Callback::new_paint_callback(
                 rect,
@@ -238,7 +238,7 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     // Prefer multi-pass if available, fallback to single-pass
     let rect = ui.max_rect();
 
-    if let Some(multi_shader) = app.shader_manager.multi_pass() {
+    if let Some(multi_shader) = &app.shader_manager.multi_pass_shader {
         // Use multi-pass shader (supports BufferA-D from editor exports)
         let callback = egui_wgpu::Callback::new_paint_callback(
             rect,
@@ -253,7 +253,7 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             },
         );
         ui.painter().add(callback);
-    } else if let Some(shader) = app.shader_manager.track_metadata() {
+    } else if let Some(shader) = &app.shader_manager.track_metadata_shader {
         // Fallback to single-pass shader (backward compatibility)
         let callback = egui_wgpu::Callback::new_paint_callback(
             rect,

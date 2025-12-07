@@ -933,6 +933,12 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
         let contrast = *self.contrast.lock().unwrap();
         let saturation = *self.saturation.lock().unwrap();
 
+        // Debug log every 60 frames (about once per second at 60fps)
+        static FRAME_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        if FRAME_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 60 == 0 {
+            log::debug!("Uniforms: gamma={:.2}, contrast={:.2}, saturation={:.2}", gamma, contrast, saturation);
+        }
+
         let uniforms = ShaderUniforms {
             time: elapsed,
             audio_bass: bass,

@@ -6,6 +6,7 @@ description = "SoundCloud Desktop Player - Modern music streaming client for Sou
 authors = ["nobus"]
 license = "MIT"
 repository = "https://github.com/nobus/TempRS"
+default-run = "TempRS"
 
 [dependencies]
 base64 = "0.22.1"

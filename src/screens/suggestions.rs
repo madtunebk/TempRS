@@ -12,14 +12,14 @@ enum SuggestionsAction {
 
 /// Suggestions view - Shows personalized recommendations in grid layout with pagination
 pub fn render_suggestions_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
-    // Fetch suggestions on first visit
+    // Check for background fetch completion first
+    app.check_suggestions_updates();
+    
+    // Refresh suggestions when opening the tab (once per visit)
     if !app.content.suggestions_initial_fetch_done && !app.content.suggestions_loading {
         app.fetch_all_suggestions();
         app.content.suggestions_initial_fetch_done = true;
     }
-    
-    // Check for background fetch completion
-    app.check_suggestions_updates();
     
     egui::ScrollArea::vertical()
         .show(ui, |ui| {

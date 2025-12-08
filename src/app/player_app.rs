@@ -1311,31 +1311,7 @@ impl MusicPlayerApp {
                             }
                         }
 
-                        // Source 4: Recent history (tertiary - fill remaining)
-                        log::info!("[Suggestions] Adding from playback history...");
-                        for record in history_records.iter().take(20) {
-                            if seen_ids.insert(record.track_id) {
-                                let track = crate::app::playlists::Track {
-                                    id: record.track_id,
-                                    title: record.title.clone(),
-                                    user: crate::app::playlists::User {
-                                        id: 0,
-                                        username: record.artist.clone(),
-                                        avatar_url: None,
-                                    },
-                                    duration: record.duration,
-                                    genre: record.genre.clone(),
-                                    artwork_url: None,
-                                    permalink_url: None,
-                                    stream_url: None,
-                                    streamable: Some(true),
-                                    playback_count: None,
-                                    access: None,
-                                    policy: None,
-                                };
-                                all_suggestions.push(track);
-                            }
-                        }
+                        // History tracks removed - they lack stream_url and cause playback issues
 
                         log::info!("[Suggestions] Combined {} unique tracks from all sources", all_suggestions.len());
                         let _ = tx.send(all_suggestions);

@@ -86,6 +86,8 @@ fn render_navigation_icons(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     
     if suggestions_btn.clicked() {
         app.ui.selected_tab = MainTab::Suggestions;
+        // Refresh suggestions data on every click
+        app.fetch_all_suggestions();
     }
     
     // Likes icon with text (always visible)

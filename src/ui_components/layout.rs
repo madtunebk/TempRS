@@ -19,6 +19,8 @@ pub fn render_with_layout(app: &mut MusicPlayerApp, ctx: &egui::Context) {
         }
         if i.modifiers.ctrl && i.key_pressed(egui::Key::S) {
             app.ui.selected_tab = MainTab::Suggestions;
+            // Refresh suggestions data on keyboard shortcut
+            app.fetch_all_suggestions();
         }
         if i.modifiers.ctrl && i.key_pressed(egui::Key::L) {
             app.ui.selected_tab = MainTab::Likes;

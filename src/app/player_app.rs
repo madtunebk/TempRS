@@ -262,8 +262,8 @@ impl MusicPlayerApp {
         // Start playback if we have a stream URL
         if let (Some(stream_url), Some(oauth)) = (&self.audio.current_stream_url, &self.auth.oauth_manager) {
             if let Some(token) = crate::utils::token_helper::get_valid_token_sync(oauth) {
-                log::info!("Playing: {} by {}", self.audio.current_title, self.audio.current_artist);
-                self.audio.audio_controller.play(stream_url.clone(), token.access_token.clone(), track.id);
+                log::info!("Playing: {} by {} (duration: {}ms)", self.audio.current_title, self.audio.current_artist, self.audio.current_duration_ms);
+                self.audio.audio_controller.play(stream_url.clone(), token.access_token.clone(), track.id, self.audio.current_duration_ms);
                 self.audio.is_playing = true;
                 log::info!("[PLAY] Playback started - is_playing={}", self.audio.is_playing);
                 self.audio.track_start_time = Some(Instant::now());

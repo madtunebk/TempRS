@@ -148,6 +148,7 @@ impl AudioPlayer {
         url: &str,
         token: &str,
         track_id: u64,
+        duration_ms: u64,
         bass_energy: std::sync::Arc<std::sync::atomic::AtomicU32>,
         mid_energy: std::sync::Arc<std::sync::atomic::AtomicU32>,
         high_energy: std::sync::Arc<std::sync::atomic::AtomicU32>,
@@ -254,11 +255,18 @@ impl AudioPlayer {
         sink.append(source);
         log::info!("[AudioPlayer] Progressive streaming started - playing as we download!");
         
+        // Convert track duration from milliseconds to Duration
+        let total_duration = if duration_ms > 0 {
+            Some(Duration::from_millis(duration_ms))
+        } else {
+            None
+        };
+        
         Ok(Self {
             sink,
             _stream,
             stream_handle: stream_handle.clone(),
-            total_duration: None, // Unknown for streaming
+            total_duration,
             start_time: Instant::now(),
             start_position: Duration::ZERO,
             paused_at: None,

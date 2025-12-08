@@ -8,6 +8,7 @@ pub enum AudioCommand {
         url: String,
         token: String,
         track_id: u64,
+        duration_ms: u64,
     },
     Pause,
     Resume,
@@ -64,8 +65,8 @@ impl AudioController {
                 // Handle commands
                 while let Ok(cmd) = command_rx.try_recv() {
                     match cmd {
-                        AudioCommand::Play { url, token, track_id } => {
-                            log::debug!("[AudioController] Received Play command for track {}", track_id);
+                        AudioCommand::Play { url, token, track_id, duration_ms } => {
+                            log::debug!("[AudioController] Received Play command for track {} (duration: {}ms)", track_id, duration_ms);
 
                             // Reset finished flag BEFORE loading new track
                             if let Some(mut lock) = crate::utils::error_handling::safe_lock(&is_finished_clone, "AudioController") {
@@ -91,6 +92,7 @@ impl AudioController {
                                 &url, 
                                 &token, 
                                 track_id,
+                                duration_ms,
                                 Arc::clone(&bass_energy),
                                 Arc::clone(&mid_energy),
                                 Arc::clone(&high_energy),
@@ -199,8 +201,8 @@ impl AudioController {
         }
     }
 
-    pub fn play(&self, url: String, token: String, track_id: u64) {
-        let _ = self.command_tx.send(AudioCommand::Play { url, token, track_id });
+    pub fn play(&self, url: String, token: String, track_id: u64, duration_ms: u64) {
+        let _ = self.command_tx.send(AudioCommand::Play { url, token, track_id, duration_ms });
     }
 
     pub fn pause(&self) {

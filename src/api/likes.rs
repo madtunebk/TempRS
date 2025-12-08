@@ -2,7 +2,7 @@ use crate::models::{track::Track, playlist::Playlist};
 
 /// Fetch user's liked tracks
 pub async fn fetch_user_liked_tracks(token: &str) -> Result<Vec<Track>, String> {
-    let url = "https://api.soundcloud.com/me/likes/tracks?limit=200&access=playable,preview,blocked&linked_partitioning=true";
+    let url = "https://api.soundcloud.com/me/likes/tracks?limit=200&access=playable&linked_partitioning=true";
     
     log::info!("[Likes API] Fetching liked tracks from: {}", url);
     

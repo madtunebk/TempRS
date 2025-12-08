@@ -12,14 +12,18 @@ enum SuggestionsAction {
 
 /// Suggestions view - Shows personalized recommendations in grid layout with pagination
 pub fn render_suggestions_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
+    // Fetch suggestions on first visit
+    if !app.content.suggestions_initial_fetch_done && !app.content.suggestions_loading {
+        app.fetch_all_suggestions();
+        app.content.suggestions_initial_fetch_done = true;
+    }
+    
+    // Check for background fetch completion
+    app.check_suggestions_updates();
+    
     egui::ScrollArea::vertical()
         .show(ui, |ui| {
             ui.add_space(20.0);
-            
-            // Trigger initial fetch if needed
-            if !app.content.suggestions_loading && app.content.suggestions_tracks.is_empty() && !app.content.suggestions_initial_fetch_done {
-                app.fetch_all_suggestions();
-            }
             
             // Title with track count
             ui.horizontal(|ui| {

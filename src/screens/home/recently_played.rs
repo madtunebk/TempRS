@@ -16,13 +16,13 @@ pub fn render_recently_played_section(
     app: &mut MusicPlayerApp,
     ui: &mut egui::Ui,
 ) -> Option<TrackAction> {
-    let recently_played = app.home_content.recently_played.clone();
+    let recently_played = app.content.home_content.recently_played.clone();
     
     // Always show section header
     if !recently_played.is_empty() {
         if render_section_header(ui, "🕒 Recently Played", Some("View all")) {
             log::info!("View all clicked for Recently Played - switching to History tab");
-            app.selected_tab = crate::app::player_app::MainTab::History;
+            app.ui.selected_tab = crate::app::player_app::MainTab::History;
         }
     } else {
         render_section_header(ui, "🕒 Recently Played", None);

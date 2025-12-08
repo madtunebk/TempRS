@@ -7,19 +7,19 @@ pub fn render_splash_screen(app: &mut MusicPlayerApp, ctx: &egui::Context) {
     ctx.request_repaint_after(std::time::Duration::from_micros(8333));
     
     // Add animated shader background to BACKGROUND painter (renders first, behind everything)
-    if let Some(shader) = app.shader_manager.splash() {
+    if let Some(shader) = app.ui.shader_manager.splash() {
         let rect = ctx.content_rect();
 
         let callback = egui_wgpu::Callback::new_paint_callback(
             rect,
             ShaderCallback {
                 shader: shader.clone(),
-                bass_energy: app.bass_energy.clone(),   // Share app's audio energy (will be 0.0 on splash)
-                mid_energy: app.mid_energy.clone(),
-                high_energy: app.high_energy.clone(),
-                gamma: app.shader_manager.gamma(),
-                contrast: app.shader_manager.contrast(),
-                saturation: app.shader_manager.saturation(),
+                bass_energy: app.audio.bass_energy.clone(),   // Share app's audio energy (will be 0.0 on splash)
+                mid_energy: app.audio.mid_energy.clone(),
+                high_energy: app.audio.high_energy.clone(),
+                gamma: app.ui.shader_manager.gamma(),
+                contrast: app.ui.shader_manager.contrast(),
+                saturation: app.ui.shader_manager.saturation(),
             },
         );
 
@@ -30,13 +30,13 @@ pub fn render_splash_screen(app: &mut MusicPlayerApp, ctx: &egui::Context) {
     }
     
     // Load logo texture if not already loaded
-    if app.logo_texture.is_none() {
-        app.logo_texture = Some(load_logo_texture(ctx));
+    if app.ui.logo_texture.is_none() {
+        app.ui.logo_texture = Some(load_logo_texture(ctx));
     }
     
     // Load no_artwork texture if not already loaded
-    if app.no_artwork_texture.is_none() {
-        app.no_artwork_texture = Some(load_no_artwork_texture(ctx));
+    if app.ui.no_artwork_texture.is_none() {
+        app.ui.no_artwork_texture = Some(load_no_artwork_texture(ctx));
     }
     
     // UI Panel with full-screen semi-transparent black overlay
@@ -54,21 +54,21 @@ pub fn render_splash_screen(app: &mut MusicPlayerApp, ctx: &egui::Context) {
                 ui.add_space(20.0);
                 
                 // Logo image
-                if let Some(logo_texture) = &app.logo_texture {
+                if let Some(logo_texture) = &app.ui.logo_texture {
                     render_logo_image(ui, logo_texture);
                 }
                 
                 ui.add_space(40.0);
                 
                 // Show different states based on what's happening
-                if app.is_authenticating {
+                if app.auth.is_authenticating {
                     // User clicked login - waiting for browser authentication
                     render_authenticating_status(ui, alpha);
                     ui.add_space(10.0);
                     render_loading_text(ui, alpha, "Check your browser to complete login...");
-                } else if app.token_check_done {
+                } else if app.auth.token_check_done {
                     // Token check completed - check if we have a valid token
-                    let has_valid_token = if let Some(oauth_manager) = &app.oauth_manager {
+                    let has_valid_token = if let Some(oauth_manager) = &app.auth.oauth_manager {
                         oauth_manager.get_token().is_some()
                     } else {
                         false
@@ -99,10 +99,10 @@ pub fn render_splash_screen(app: &mut MusicPlayerApp, ctx: &egui::Context) {
         });
 }
 fn start_oauth_flow(app: &mut MusicPlayerApp) {
-    if let Some(oauth_manager) = &app.oauth_manager {
-        app.is_authenticating = true;
-        app.login_message_shown = false; // Reset for next time
-        app.token_check_done = false; // Reset to allow re-check after auth
+    if let Some(oauth_manager) = &app.auth.oauth_manager {
+        app.auth.is_authenticating = true;
+        app.auth.login_message_shown = false; // Reset for next time
+        app.auth.token_check_done = false; // Reset to allow re-check after auth
         
         // Generate state for CSRF protection
         let state = format!("{}", rand::random::<u64>());
@@ -113,12 +113,12 @@ fn start_oauth_flow(app: &mut MusicPlayerApp) {
         // Open browser for authentication
         if let Err(e) = webbrowser::open(&auth_url) {
             log::error!("Failed to open browser: {}", e);
-            app.is_authenticating = false;
+            app.auth.is_authenticating = false;
             return;
         }
         
         // Spawn async task to handle OAuth callback
-        let oauth_manager = app.oauth_manager.clone();
+        let oauth_manager = app.auth.oauth_manager.clone();
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             runtime.block_on(async {

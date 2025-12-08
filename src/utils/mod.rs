@@ -1,9 +1,11 @@
 pub mod artwork;
+pub mod async_helper;
 pub mod audio_analyzer;
 pub mod audio_controller;
 pub mod audio_fft;
 pub mod cache;
 pub mod clipboard;
+pub mod error_handling;
 pub mod errors;
 pub mod fingerprint;
 pub mod formatting;

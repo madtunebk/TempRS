@@ -77,10 +77,15 @@ pub async fn get_valid_token(oauth: &OAuthManager) -> Option<TokenData> {
 /// Check if token is about to expire and refresh proactively
 /// Returns true if token is valid or was refreshed successfully
 pub async fn ensure_fresh_token(oauth: &OAuthManager) -> bool {
-    let current_time = std::time::SystemTime::now()
+    let current_time = match std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    {
+        Ok(duration) => duration.as_secs(),
+        Err(e) => {
+            log::error!("[TokenHelper] System time error (clock before 1970?): {}", e);
+            return false; // Assume token expired to trigger re-auth
+        }
+    };
     
     // Get token even if expired (to check expiry time)
     if let Some(token) = oauth.get_token_for_refresh() {
@@ -122,7 +127,13 @@ pub async fn ensure_fresh_token(oauth: &OAuthManager) -> bool {
 /// Use this from UI thread when you need to ensure valid token before API call
 pub fn ensure_fresh_token_sync(oauth: &OAuthManager) -> bool {
     let oauth_clone = oauth.clone();
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = match crate::utils::error_handling::create_runtime() {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("[TokenHelper] {}", e);
+            return false;
+        }
+    };
     rt.block_on(ensure_fresh_token(&oauth_clone))
 }
 
@@ -130,6 +141,12 @@ pub fn ensure_fresh_token_sync(oauth: &OAuthManager) -> bool {
 /// Use this from UI thread before making API calls
 pub fn get_valid_token_sync(oauth: &OAuthManager) -> Option<TokenData> {
     let oauth_clone = oauth.clone();
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = match crate::utils::error_handling::create_runtime() {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("[TokenHelper] {}", e);
+            return None;
+        }
+    };
     rt.block_on(get_valid_token(&oauth_clone))
 }

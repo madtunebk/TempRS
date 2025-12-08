@@ -10,7 +10,7 @@ use recently_played::TrackAction;
 /// Home tab - Personalized feed with grid layout (same as search)
 pub fn render_home_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     // Trigger data fetch on first render only (updates happen when tracks play)
-    if !app.home_loading && !app.home_content.has_content() {
+    if !app.content.home_loading && !app.content.home_content.has_content() {
         app.fetch_home_data();
     }
     
@@ -22,7 +22,7 @@ pub fn render_home_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             ui.add_space(20.0);
             
             // Show loading state
-            if app.home_loading && !app.home_content.has_content() {
+            if app.content.home_loading && !app.content.home_content.has_content() {
                 ui.vertical_centered(|ui| {
                     ui.add_space(100.0);
                     ui.spinner();
@@ -38,12 +38,12 @@ pub fn render_home_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             
             // Section 1: Recently Played
             if let Some(action) = recently_played::render_recently_played_section(app, ui) {
-                handle_track_action(app, action, &app.home_content.recently_played.iter().take(6).cloned().collect::<Vec<_>>());
+                handle_track_action(app, action, &app.content.home_content.recently_played.iter().take(6).cloned().collect::<Vec<_>>());
             }
             
             // Section 2: Suggestions ("More of what you like")
             if let Some(action) = suggestions::render_suggestions_section(app, ui) {
-                handle_track_action(app, action, &app.home_content.recommendations.iter().take(6).cloned().collect::<Vec<_>>());
+                handle_track_action(app, action, &app.content.home_content.recommendations.iter().take(6).cloned().collect::<Vec<_>>());
             }
         });
 }
@@ -60,7 +60,7 @@ fn handle_track_action(app: &mut MusicPlayerApp, action: TrackAction, tracks: &[
                     app.fetch_and_play_track(track_id);
                 } else {
                     // Track has stream URL - play directly
-                    app.playback_queue.load_tracks(vec![track.clone()]);
+                    app.audio.playback_queue.load_tracks(vec![track.clone()]);
                     app.play_track(track_id);
                 }
             }
@@ -73,7 +73,7 @@ fn handle_track_action(app: &mut MusicPlayerApp, action: TrackAction, tracks: &[
                 app.fetch_and_play_playlist(tracks.iter().map(|t| t.id).collect());
             } else {
                 // All tracks have stream URLs - play directly
-                app.playback_queue.load_tracks(tracks.to_vec());
+                app.audio.playback_queue.load_tracks(tracks.to_vec());
                 if let Some(first_track) = tracks.first() {
                     app.play_track(first_track.id);
                 }
@@ -90,7 +90,7 @@ fn preload_home_artwork(app: &mut MusicPlayerApp, ctx: &egui::Context) {
     let mut artwork_to_load = Vec::new();
     
     // Recently played artwork
-    for track in app.home_content.recently_played.iter().take(6) {
+    for track in app.content.home_content.recently_played.iter().take(6) {
         if let Some(artwork_url) = &track.artwork_url {
             let url = artwork_url.replace("-large.jpg", "-t500x500.jpg");
             artwork_to_load.push((track.id, url));
@@ -98,7 +98,7 @@ fn preload_home_artwork(app: &mut MusicPlayerApp, ctx: &egui::Context) {
     }
     
     // Recommendations artwork
-    for track in app.home_content.recommendations.iter().take(6) {
+    for track in app.content.home_content.recommendations.iter().take(6) {
         if let Some(artwork_url) = &track.artwork_url {
             let url = artwork_url.replace("-large.jpg", "-t500x500.jpg");
             artwork_to_load.push((track.id, url));

@@ -11,7 +11,7 @@ const SEARCH_WIDTH: f32 = 220.0;
 pub fn render_search_section(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing.x = 10.0;
     
-    if app.search_expanded {
+    if app.content.search_expanded {
         // Expanded search bar - height matches navigation buttons
         egui::Frame::NONE
             .fill(DARK_GRAY)
@@ -41,7 +41,7 @@ pub fn render_search_section(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                     );
                     
                     if close_btn.clicked() {
-                        app.search_expanded = false;
+                        app.content.search_expanded = false;
                     }
                 });
             });
@@ -58,7 +58,7 @@ pub fn render_search_section(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         );
         
         if search_icon_btn.clicked() {
-            app.search_expanded = true;
+            app.content.search_expanded = true;
         }
     }
 }
@@ -67,7 +67,7 @@ pub fn render_search_section(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
 fn render_search_input(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     let search_input = ui.add_sized(
         egui::vec2(SEARCH_WIDTH, BUTTON_HEIGHT),
-        egui::TextEdit::singleline(&mut app.search_query)
+        egui::TextEdit::singleline(&mut app.content.search_query)
             .hint_text("Search SoundCloud...")
             .font(egui::FontId::proportional(14.0))
             .frame(false)
@@ -80,22 +80,22 @@ fn render_search_input(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
 
 /// Render search type checkboxes (Tracks/Playlists)
 fn render_search_type_selector(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
-    let tracks_checked = app.search_type == crate::app::player_app::SearchType::Tracks;
+    let tracks_checked = app.content.search_type == crate::app::player_app::SearchType::Tracks;
     if ui.checkbox(&mut tracks_checked.clone(), 
         egui::RichText::new("Tracks").size(12.0)
     ).clicked() {
-        app.search_type = crate::app::player_app::SearchType::Tracks;
-        if !app.search_query.is_empty() {
+        app.content.search_type = crate::app::player_app::SearchType::Tracks;
+        if !app.content.search_query.is_empty() {
             crate::screens::search::trigger_search(app);
         }
     }
     
-    let playlists_checked = app.search_type == crate::app::player_app::SearchType::Playlists;
+    let playlists_checked = app.content.search_type == crate::app::player_app::SearchType::Playlists;
     if ui.checkbox(&mut playlists_checked.clone(), 
         egui::RichText::new("Playlists").size(12.0)
     ).clicked() {
-        app.search_type = crate::app::player_app::SearchType::Playlists;
-        if !app.search_query.is_empty() {
+        app.content.search_type = crate::app::player_app::SearchType::Playlists;
+        if !app.content.search_query.is_empty() {
             crate::screens::search::trigger_search(app);
         }
     }

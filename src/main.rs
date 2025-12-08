@@ -7,6 +7,8 @@ mod app_state;
 mod models;
 mod api;
 mod data;
+mod services;
+mod state;
 
 use eframe::egui;
 use app::MusicPlayerApp;
@@ -44,9 +46,9 @@ fn main() -> Result<(), eframe::Error> {
             .with_title(format!("{} v{} - {}", APP_NAME, APP_VERSION, APP_DESCRIPTION))
             .with_inner_size([APP_WIDTH, APP_HEIGHT])         // Initial size
             .with_min_inner_size([APP_WIDTH, APP_HEIGHT])     // Minimum size
-            .with_resizable(false)                // Disable resize
-            .with_maximize_button(false)          // Disable maximize button
-            .with_maximized(false)                // Don't start maximized
+            .with_resizable(true)                 // Disable resize
+            .with_maximize_button(true)           // Disable/Enable maximize button
+            .with_maximized(true)                 // Start maximized
             .with_decorations(true)               // OS window decorations enabled
             .with_icon(icon_data),
         vsync: false,                             // Disable vsync for higher FPS

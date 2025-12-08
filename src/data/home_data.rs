@@ -44,17 +44,16 @@ impl Default for HomeContent {
 /// Fetch recently played tracks from local database (no API call needed!)
 /// Fetches directly from database ordered by played_at DESC for correct chronological order
 pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
+    crate::utils::async_helper::spawn_fire_and_forget(move || {
+        Box::pin(async move {
             let mut recent_tracks: Vec<Track> = Vec::new();
-            
+
             // Fetch tracks from database ordered by played_at DESC (most recent first)
             match PlaybackHistoryDB::new() {
                 Ok(db) => {
                     let records = db.get_recent_tracks(6);
                     log::info!("[Home] Loaded {} tracks from database (ordered by played_at DESC)", records.len());
-                    
+
                     // Convert PlaybackRecord to Track
                     for record in records {
                         let track = Track {
@@ -75,7 +74,7 @@ pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
                             access: None,
                             policy: None,
                         };
-                        
+
                         // Note: We can't validate streamability here since we don't have stream_url
                         // The track will be validated when actually played (fetch_and_play_track)
                         recent_tracks.push(track);
@@ -85,10 +84,11 @@ pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
                     log::error!("[Home] Failed to access playback history database: {}", e);
                 }
             }
-            
+
             log::info!("[Home] Sending {} recently played tracks (ordered by played_at DESC)", recent_tracks.len());
             let _ = tx.send(recent_tracks);
-        });
+            Ok(())
+        })
     });
 }
 
@@ -97,16 +97,15 @@ pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
 /// Fallback: If history empty or API fails, fetch popular/trending tracks
 /// Always returns exactly 6 tracks
 pub fn fetch_recommendations_async(token: String, recently_played: Vec<Track>, tx: Sender<Vec<Track>>, limit: usize) {
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
+    crate::utils::async_helper::spawn_fire_and_forget(move || {
+        Box::pin(async move {
             let mut recommendations: Vec<Track> = Vec::new();
-            
+
             // Try to use recently played track first
             if let Some(track) = recently_played.first() {
                 let track_urn = format!("soundcloud:tracks:{}", track.id);
                 log::info!("[Home] Finding {} related tracks for most recent: {} ({})", limit, track.title, track_urn);
-                
+
                 // Get related tracks
                 match fetch_related_tracks(&token, &track_urn, limit).await {
                     Ok(tracks) => {
@@ -124,12 +123,13 @@ pub fn fetch_recommendations_async(token: String, recently_played: Vec<Track>, t
             } else {
                 log::info!("[Home] No recently played tracks, recommendations will be empty");
             }
-            
+
             // Final deduplication pass (in case related tracks had duplicates)
             recommendations = crate::utils::track_filter::remove_duplicates(recommendations);
-            
+
             log::info!("[Home] Sending {} recommendations total", recommendations.len());
             let _ = tx.send(recommendations);
-        });
+            Ok(())
+        })
     });
 }

@@ -13,7 +13,7 @@ pub fn render_search_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egu
         ui.add_space(20.0);
 
         // Loading overlay
-        if app.search_loading {
+        if app.content.search_loading {
             ui.vertical_centered(|ui| {
                 ui.add_space(100.0);
                 ui.spinner();
@@ -28,13 +28,13 @@ pub fn render_search_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egu
         }
         
         // Calculate total items
-        let total_items = match app.search_type {
-            SearchType::Tracks => app.search_results_tracks.len(),
-            SearchType::Playlists => app.search_results_playlists.len(),
+        let total_items = match app.content.search_type {
+            SearchType::Tracks => app.content.search_results_tracks.len(),
+            SearchType::Playlists => app.content.search_results_playlists.len(),
         };
         
         // Empty state when no results
-        if total_items == 0 && !app.search_query.is_empty() {
+        if total_items == 0 && !app.content.search_query.is_empty() {
             render_empty_state(ui);
             return;
         }
@@ -44,14 +44,14 @@ pub fn render_search_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egu
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
                 
-                let type_name = match app.search_type {
+                let type_name = match app.content.search_type {
                     SearchType::Tracks => "Tracks",
                     SearchType::Playlists => "Playlists",
                 };
                 
                 ui.label(
                     egui::RichText::new(format!("🔍 Search Results: {} ({} {})", 
-                        app.search_query,
+                        app.content.search_query,
                         total_items,
                         if total_items == 1 { 
                             type_name.trim_end_matches('s') 
@@ -76,12 +76,12 @@ pub fn render_search_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egu
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 // Calculate total items for pagination
-                let total_items = match app.search_type {
-                    SearchType::Tracks => app.search_results_tracks.len(),
-                    SearchType::Playlists => app.search_results_playlists.len(),
+                let total_items = match app.content.search_type {
+                    SearchType::Tracks => app.content.search_results_tracks.len(),
+                    SearchType::Playlists => app.content.search_results_playlists.len(),
                 };
                 
-                match app.search_type {
+                match app.content.search_type {
                     SearchType::Tracks => tracks::render_tracks_grid_paginated(app, ui, ctx),
                     SearchType::Playlists => playlists::render_playlists_grid_paginated(app, ui, ctx),
                 }
@@ -92,9 +92,9 @@ pub fn render_search_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egu
                     
                     crate::ui_components::helpers::render_pagination_controls(
                         ui,
-                        &mut app.search_page,
+                        &mut app.content.search_page,
                         total_items,
-                        app.search_page_size,
+                        app.content.search_page_size,
                     );
                     
                     ui.add_space(20.0);
@@ -108,9 +108,9 @@ pub fn render_search_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egu
 /// Preload artwork for first batch of visible results for instant display
 fn preload_visible_artwork(app: &mut MusicPlayerApp, ctx: &egui::Context) {
     // Collect track IDs and URLs to avoid borrow checker issues
-    let artwork_data: Vec<(u64, String)> = match app.search_type {
+    let artwork_data: Vec<(u64, String)> = match app.content.search_type {
         SearchType::Tracks => {
-            app.search_results_tracks
+            app.content.search_results_tracks
                 .iter()
                 .take(20)
                 .filter_map(|track| {
@@ -119,13 +119,13 @@ fn preload_visible_artwork(app: &mut MusicPlayerApp, ctx: &egui::Context) {
                     })
                 })
                 .filter(|(_, url)| {
-                    !app.thumb_cache.contains_key(url)
-                        && !app.thumb_pending.contains_key(url)
+                    !app.ui.thumb_cache.contains_key(url)
+                        && !app.ui.thumb_pending.contains_key(url)
                 })
                 .collect()
         }
         SearchType::Playlists => {
-            app.search_results_playlists
+            app.content.search_results_playlists
                 .iter()
                 .take(20)
                 .filter_map(|playlist| {
@@ -135,8 +135,8 @@ fn preload_visible_artwork(app: &mut MusicPlayerApp, ctx: &egui::Context) {
                     })
                 })
                 .filter(|(_, url)| {
-                    !app.thumb_cache.contains_key(url)
-                        && !app.thumb_pending.contains_key(url)
+                    !app.ui.thumb_cache.contains_key(url)
+                        && !app.ui.thumb_pending.contains_key(url)
                 })
                 .collect()
         }
@@ -151,7 +151,7 @@ fn preload_visible_artwork(app: &mut MusicPlayerApp, ctx: &egui::Context) {
 /// Public function to trigger search from header
 pub fn trigger_search(app: &mut MusicPlayerApp) {
     // Automatically switch to Search tab when searching
-    app.selected_tab = crate::app::player_app::MainTab::Search;
+    app.ui.selected_tab = crate::app::player_app::MainTab::Search;
     perform_search(app);
 }
 
@@ -170,7 +170,7 @@ pub(crate) fn draw_placeholder(ui: &mut egui::Ui, rect: egui::Rect) {
 
 /// Shared helper: Draw no_artwork.png or fallback to placeholder
 pub(crate) fn draw_no_artwork(app: &MusicPlayerApp, ui: &mut egui::Ui, rect: egui::Rect) {
-    if let Some(no_artwork) = &app.no_artwork_texture {
+    if let Some(no_artwork) = &app.ui.no_artwork_texture {
         ui.painter().image(
             no_artwork.id(),
             rect,
@@ -186,26 +186,26 @@ pub(crate) fn draw_no_artwork(app: &MusicPlayerApp, ui: &mut egui::Ui, rect: egu
 }
 
 fn perform_search(app: &mut MusicPlayerApp) {
-    if app.search_query.trim().is_empty() {
+    if app.content.search_query.trim().is_empty() {
         return;
     }
 
-    app.search_loading = true;
-    app.search_results_tracks.clear();
-    app.search_results_playlists.clear();
-    app.search_next_href = None;
-    app.search_has_more = false;
-    app.search_page = 0;  // Reset to first page
+    app.content.search_loading = true;
+    app.content.search_results_tracks.clear();
+    app.content.search_results_playlists.clear();
+    app.content.search_next_href = None;
+    app.content.search_has_more = false;
+    app.content.search_page = 0;  // Reset to first page
 
-    let query = app.search_query.clone();
-    let search_type = app.search_type;
-    let token = match app.app_state.get_token() {
+    let query = app.content.search_query.clone();
+    let search_type = app.content.search_type;
+    let token = match app.content.app_state.get_token() {
         Some(t) => t,
         None => return,
     };
 
     let (tx, rx) = channel();
-    app.search_rx = Some(rx);
+    app.tasks.search_rx = Some(rx);
 
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();

@@ -21,7 +21,7 @@ pub fn render_player(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     );
 
     if footer_resp.clicked() {
-        app.selected_tab = MainTab::NowPlaying;
+        app.ui.selected_tab = MainTab::NowPlaying;
     }
     if footer_resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -55,21 +55,21 @@ fn render_all_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing.x = 10.0;
     
     // Check queue size and navigation availability
-    let queue_size = app.playback_queue.current_queue.len();
+    let queue_size = app.audio.playback_queue.current_queue.len();
         let is_single_track = queue_size <= 1;
         
-        let can_prev = app.playback_queue.current_index
+        let can_prev = app.audio.playback_queue.current_index
             .map(|idx| idx > 0)
             .unwrap_or(false);
         
-        let can_next = app.playback_queue.current_index
+        let can_next = app.audio.playback_queue.current_index
             .map(|idx| idx < queue_size - 1)
             .unwrap_or(false);
 
         // Shuffle button - disabled for single track
-        let is_repeat_one = app.repeat_mode == RepeatMode::One;
+        let is_repeat_one = app.audio.repeat_mode == RepeatMode::One;
         let shuffle_enabled = !is_single_track && !is_repeat_one;
-        let shuffle_color = if app.shuffle_mode && shuffle_enabled {
+        let shuffle_color = if app.audio.shuffle_mode && shuffle_enabled {
             egui::Color32::from_rgb(255, 138, 43)
         } else if is_single_track {
             egui::Color32::from_rgb(100, 100, 100)
@@ -108,7 +108,7 @@ fn render_all_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         }
         
         // Stop button
-        let has_track = app.current_track_id.is_some();
+        let has_track = app.audio.current_track_id.is_some();
         let stop_fill = if has_track {
             egui::Color32::from_rgb(45, 45, 50)
         } else {
@@ -128,9 +128,9 @@ fn render_all_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         }
         
         // Play/Pause button
-        let has_track = app.current_track_id.is_some();
-        let play_icon = if app.is_playing { "⏸" } else { "▶" };
-        let play_fill = if app.is_playing {
+        let has_track = app.audio.current_track_id.is_some();
+        let play_icon = if app.audio.is_playing { "⏸" } else { "▶" };
+        let play_fill = if app.audio.is_playing {
             egui::Color32::from_rgb(255, 85, 0)
         } else if has_track {
             egui::Color32::from_rgb(45, 45, 50)
@@ -146,7 +146,7 @@ fn render_all_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 .min_size(egui::vec2(40.0, 40.0))
         );
         if play_btn.clicked() {
-            log::info!("[UI] Play/Pause clicked - current is_playing: {}", app.is_playing);
+            log::info!("[UI] Play/Pause clicked - current is_playing: {}", app.audio.is_playing);
             app.toggle_playback();
         }
         
@@ -171,7 +171,7 @@ fn render_all_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         
         // Repeat button - disabled for single track
         let repeat_enabled = !is_single_track;
-        let (repeat_icon, repeat_color) = match app.repeat_mode {
+        let (repeat_icon, repeat_color) = match app.audio.repeat_mode {
             RepeatMode::None => ("🔁", if is_single_track {
                 egui::Color32::from_rgb(100, 100, 100)
             } else {
@@ -197,8 +197,8 @@ fn render_volume_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing.x = 10.0;
     
     // Speaker button - toggles popup
-    let mute_icon = if app.muted { "🔇" } else { "🔊" };
-    let speaker_color = if app.show_volume_popup {
+    let mute_icon = if app.audio.muted { "🔇" } else { "🔊" };
+    let speaker_color = if app.ui.show_volume_popup {
         egui::Color32::from_rgb(255, 120, 40)  // Orange when popup is open
     } else {
         egui::Color32::from_rgb(160, 160, 160)
@@ -216,11 +216,11 @@ fn render_volume_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     if volume_btn.clicked_by(egui::PointerButton::Secondary) {
         app.toggle_mute();
     } else if volume_btn.clicked() {
-        app.show_volume_popup = !app.show_volume_popup;
+        app.ui.show_volume_popup = !app.ui.show_volume_popup;
     }
     
     // Show vertical popup slider above speaker icon
-    if app.show_volume_popup {
+    if app.ui.show_volume_popup {
         let popup_id = ui.id().with("volume_popup");
         let button_rect = volume_btn.rect;
         
@@ -242,7 +242,7 @@ fn render_volume_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         );
         
         if ui.input(|i| i.pointer.any_click()) && !popup_response.hovered() && !volume_btn.hovered() {
-            app.show_volume_popup = false;
+            app.ui.show_volume_popup = false;
         }
         
         // Draw popup background with shadow
@@ -287,7 +287,7 @@ fn render_volume_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         );
         
         // Handle interaction
-        let mut volume = app.volume;
+        let mut volume = app.audio.volume;
         let slider_response = ui.interact(
             slider_rect.expand2(egui::vec2(15.0, 0.0)),  // Wider hit area
             popup_id.with("slider"),
@@ -304,8 +304,8 @@ fn render_volume_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 app.set_volume(volume);
                 
                 // Unmute if adjusting volume while muted
-                if app.muted {
-                    app.muted = false;
+                if app.audio.muted {
+                    app.audio.muted = false;
                 }
             }
         }
@@ -357,7 +357,7 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     let duration_secs = duration.as_secs_f32();
     
     // Check if track is loaded and ready for seeking
-    let can_seek = app.current_track_id.is_some() && app.track_start_time.is_some();
+    let can_seek = app.audio.current_track_id.is_some() && app.audio.track_start_time.is_some();
     
     ui.with_layout(Layout::left_to_right(egui::Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
@@ -399,7 +399,7 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         // Background track
         painter.rect_filled(bar_rect, 2.0, egui::Color32::from_rgb(70, 70, 75));
         
-        let actual_position = app.audio_controller.get_position().as_secs_f32();
+        let actual_position = app.audio.audio_controller.get_position().as_secs_f32();
         let actual_progress = if duration_secs > 0.0 {
             actual_position / duration_secs
         } else {
@@ -409,39 +409,39 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         let (display_progress, is_dragging) = if can_seek && response.dragged() {
             if let Some(pos) = response.interact_pointer_pos() {
                 let drag_progress = ((pos.x - bar_left) / (bar_right - bar_left)).clamp(0.0, 1.0);
-                app.seek_target_pos = Some(std::time::Duration::from_secs_f32(duration_secs * drag_progress));
-                app.is_seeking = true;
+                app.ui.seek_target_pos = Some(std::time::Duration::from_secs_f32(duration_secs * drag_progress));
+                app.ui.is_seeking = true;
                 (drag_progress, true)
             } else {
                 (actual_progress, false)
             }
-        } else if app.is_seeking {
-            if let Some(seek_target) = app.seek_target_pos {
+        } else if app.ui.is_seeking {
+            if let Some(seek_target) = app.ui.seek_target_pos {
                 let seek_progress = seek_target.as_secs_f32() / duration_secs.max(0.001);
                 let diff = (seek_progress - actual_progress).abs();
                 if diff < 0.1 / duration_secs.max(1.0) {
-                    app.seek_target_pos = None;
-                    app.is_seeking = false;
+                    app.ui.seek_target_pos = None;
+                    app.ui.is_seeking = false;
                     (actual_progress, false)
                 } else {
                     (seek_progress, false)
                 }
             } else {
-                app.is_seeking = false;
+                app.ui.is_seeking = false;
                 (actual_progress, false)
             }
         } else {
             (actual_progress, false)
         };
         
-        let progress_color = if is_dragging || app.is_seeking {
+        let progress_color = if is_dragging || app.ui.is_seeking {
             egui::Color32::from_rgb(80, 150, 255)   // Blue when seeking
         } else {
             egui::Color32::from_rgb(255, 100, 30)   // Orange normal
         };
         
         // Show current playback position (dimmed if seeking)
-        if is_dragging || app.is_seeking {
+        if is_dragging || app.ui.is_seeking {
             let current_rect = egui::Rect::from_min_max(
                 bar_rect.min,
                 egui::pos2(bar_left + (bar_right - bar_left) * actual_progress, bar_rect.max.y),
@@ -457,7 +457,7 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         painter.rect_filled(progress_rect, 2.0, progress_color);
         
         // Handle - only on hover or drag
-        if response.hovered() || is_dragging || app.is_seeking {
+        if response.hovered() || is_dragging || app.ui.is_seeking {
             let handle_x = bar_left + (bar_right - bar_left) * display_progress;
             let handle_center = egui::pos2(handle_x, vertical_center);
             let handle_radius_size = if is_dragging { 7.0 } else { 6.0 };
@@ -470,7 +470,7 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         }
         
         // Preview time on drag
-        if is_dragging || app.is_seeking {
+        if is_dragging || app.ui.is_seeking {
             let preview_secs = duration_secs * display_progress;
             let preview_text = format_duration(preview_secs);
             let handle_x = bar_left + (bar_right - bar_left) * display_progress;
@@ -485,7 +485,7 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         }
         
         if response.drag_stopped() {
-            if let Some(seek_target) = app.seek_target_pos {
+            if let Some(seek_target) = app.ui.seek_target_pos {
                 app.seek_to(seek_target);
             }
         }
@@ -509,7 +509,7 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
 
 /// Compact social buttons for player bar (icon-only to save space)
 fn render_compact_social_buttons(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
-    let has_track = app.current_track_id.is_some();
+    let has_track = app.audio.current_track_id.is_some();
     
     // Like button (icon only, circular)
     let (like_icon, like_color) = if app.is_current_track_liked() {

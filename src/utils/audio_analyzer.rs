@@ -1,6 +1,7 @@
 /// Real-time FFT audio analysis for visualizer
 use rustfft::{FftPlanner, num_complex::Complex};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU32;
 
 // ============================================================================
 // FFT TUNING CONSTANTS - Adjust these to fine-tune visualizer behavior
@@ -23,16 +24,16 @@ const SMOOTHING_NEW: f32 = 0.7;  // Weight for new value (0.7 = 70% new)
 /// Audio analyzer that performs FFT on incoming audio samples
 pub struct AudioAnalyzer {
     buffer: Vec<f32>,
-    bass_energy: Arc<Mutex<f32>>,
-    mid_energy: Arc<Mutex<f32>>,
-    high_energy: Arc<Mutex<f32>>,
+    bass_energy: Arc<AtomicU32>,
+    mid_energy: Arc<AtomicU32>,
+    high_energy: Arc<AtomicU32>,
 }
 
 impl AudioAnalyzer {
     pub fn new(
-        bass_energy: Arc<Mutex<f32>>,
-        mid_energy: Arc<Mutex<f32>>,
-        high_energy: Arc<Mutex<f32>>,
+        bass_energy: Arc<AtomicU32>,
+        mid_energy: Arc<AtomicU32>,
+        high_energy: Arc<AtomicU32>,
     ) -> Self {
         Self {
             buffer: Vec::with_capacity(FFT_SIZE),
@@ -99,16 +100,18 @@ impl AudioAnalyzer {
         let mid_norm = (mid / MID_SCALE).min(1.0);
         let high_norm = (high / HIGH_SCALE).min(1.0);
 
-        // Update shared values with smoothing (prevents jitter)
-        if let Ok(mut b) = self.bass_energy.lock() {
-            *b = *b * SMOOTHING_OLD + bass_norm * SMOOTHING_NEW;
-        }
-        if let Ok(mut m) = self.mid_energy.lock() {
-            *m = *m * SMOOTHING_OLD + mid_norm * SMOOTHING_NEW;
-        }
-        if let Ok(mut h) = self.high_energy.lock() {
-            *h = *h * SMOOTHING_OLD + high_norm * SMOOTHING_NEW;
-        }
+        // Update shared values with smoothing (prevents jitter) - using lock-free atomics!
+        let old_bass = crate::utils::error_handling::load_f32_atomic(&self.bass_energy);
+        let new_bass = old_bass * SMOOTHING_OLD + bass_norm * SMOOTHING_NEW;
+        crate::utils::error_handling::store_f32_atomic(&self.bass_energy, new_bass);
+
+        let old_mid = crate::utils::error_handling::load_f32_atomic(&self.mid_energy);
+        let new_mid = old_mid * SMOOTHING_OLD + mid_norm * SMOOTHING_NEW;
+        crate::utils::error_handling::store_f32_atomic(&self.mid_energy, new_mid);
+
+        let old_high = crate::utils::error_handling::load_f32_atomic(&self.high_energy);
+        let new_high = old_high * SMOOTHING_OLD + high_norm * SMOOTHING_NEW;
+        crate::utils::error_handling::store_f32_atomic(&self.high_energy, new_high);
     }
 
     /// Calculate total energy in a frequency band

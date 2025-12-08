@@ -39,7 +39,9 @@ impl AudioFFT {
 
     /// Add audio samples to the buffer (called from audio thread)
     pub fn push_samples(&self, samples: &[i16]) {
-        let mut buffer = self.sample_buffer.lock().unwrap();
+        let Some(mut buffer) = crate::utils::error_handling::safe_lock(&self.sample_buffer, "AudioFFT") else {
+            return;
+        };
         
         // Convert i16 samples to f32 and normalize
         for &sample in samples {
@@ -56,7 +58,9 @@ impl AudioFFT {
 
     /// Process current samples and update frequency data
     pub fn update(&mut self) {
-        let buffer = self.sample_buffer.lock().unwrap();
+        let Some(buffer) = crate::utils::error_handling::safe_lock(&self.sample_buffer, "AudioFFT") else {
+            return;
+        };
         
         if buffer.len() < FFT_SIZE {
             return; // Not enough samples yet
@@ -81,7 +85,9 @@ impl AudioFFT {
         fft.process(&mut windowed);
 
         // Convert to magnitude spectrum and group into bands
-        let mut freq_data = self.frequency_data.lock().unwrap();
+        let Some(mut freq_data) = crate::utils::error_handling::safe_lock(&self.frequency_data, "AudioFFT") else {
+            return;
+        };
         
         // We only care about first half of FFT (Nyquist)
         let bin_per_band = (FFT_SIZE / 2) / NUM_FREQUENCY_BANDS;
@@ -107,7 +113,9 @@ impl AudioFFT {
 
     /// Get current frequency band values (0.0 to 1.0)
     pub fn get_bands(&self) -> Vec<f32> {
-        self.frequency_data.lock().unwrap().clone()
+        crate::utils::error_handling::safe_lock(&self.frequency_data, "AudioFFT")
+            .map(|lock| lock.clone())
+            .unwrap_or_else(|| vec![0.0; NUM_FREQUENCY_BANDS])
     }
 }
 

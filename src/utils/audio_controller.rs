@@ -31,9 +31,9 @@ pub struct AudioController {
 
 impl AudioController {
     pub fn new(
-        bass_energy: Arc<Mutex<f32>>,
-        mid_energy: Arc<Mutex<f32>>,
-        high_energy: Arc<Mutex<f32>>,
+        bass_energy: Arc<std::sync::atomic::AtomicU32>,
+        mid_energy: Arc<std::sync::atomic::AtomicU32>,
+        high_energy: Arc<std::sync::atomic::AtomicU32>,
     ) -> Self {
         let (command_tx, command_rx): (Sender<AudioCommand>, Receiver<AudioCommand>) = channel();
         let position = Arc::new(Mutex::new(Duration::ZERO));
@@ -51,7 +51,13 @@ impl AudioController {
         let current_volume_clone = current_volume.clone();
 
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = match crate::utils::error_handling::create_runtime() {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("[AudioController] Failed to create runtime for audio thread: {}", e);
+                    return; // Exit thread gracefully
+                }
+            };
             let mut player: Option<AudioPlayer> = None;
 
             loop {
@@ -62,7 +68,9 @@ impl AudioController {
                             log::debug!("[AudioController] Received Play command for track {}", track_id);
 
                             // Reset finished flag BEFORE loading new track
-                            *is_finished_clone.lock().unwrap() = false;
+                            if let Some(mut lock) = crate::utils::error_handling::safe_lock(&is_finished_clone, "AudioController") {
+                                *lock = false;
+                            }
 
                             // Cleanup old player first to free memory
                             if let Some(mut old_player) = player.take() {
@@ -71,8 +79,12 @@ impl AudioController {
                                 drop(old_player);
                             }
 
-                            *current_url_clone.lock().unwrap() = Some(url.clone());
-                            *current_token_clone.lock().unwrap() = Some(token.clone());
+                            if let Some(mut lock) = crate::utils::error_handling::safe_lock(&current_url_clone, "AudioController") {
+                                *lock = Some(url.clone());
+                            }
+                            if let Some(mut lock) = crate::utils::error_handling::safe_lock(&current_token_clone, "AudioController") {
+                                *lock = Some(token.clone());
+                            }
 
                             log::debug!("[AudioController] Starting cached audio playback...");
                             match rt.block_on(AudioPlayer::new_and_play_cached(
@@ -86,10 +98,14 @@ impl AudioController {
                                 Ok(mut p) => {
                                     log::info!("[AudioController] Audio playback started");
                                     // Apply stored volume to new player
-                                    let vol = *current_volume_clone.lock().unwrap();
-                                    p.set_volume(vol);
-                                    log::debug!("[AudioController] Applied volume: {}", vol);
-                                    *duration_clone.lock().unwrap() = p.get_duration();
+                                    if let Some(lock) = crate::utils::error_handling::safe_lock(&current_volume_clone, "AudioController") {
+                                        let vol = *lock;
+                                        p.set_volume(vol);
+                                        log::debug!("[AudioController] Applied volume: {}", vol);
+                                    }
+                                    if let Some(mut lock) = crate::utils::error_handling::safe_lock(&duration_clone, "AudioController") {
+                                        *lock = p.get_duration();
+                                    }
                                     player = Some(p);
                                 }
                                 Err(e) => {
@@ -116,12 +132,20 @@ impl AudioController {
                                 // Explicitly drop to free memory immediately
                                 drop(p);
                             }
-                            *position_clone.lock().unwrap() = Duration::ZERO;
-                            *duration_clone.lock().unwrap() = None;
-                            *is_finished_clone.lock().unwrap() = true;
+                            if let Some(mut lock) = crate::utils::error_handling::safe_lock(&position_clone, "AudioController") {
+                                *lock = Duration::ZERO;
+                            }
+                            if let Some(mut lock) = crate::utils::error_handling::safe_lock(&duration_clone, "AudioController") {
+                                *lock = None;
+                            }
+                            if let Some(mut lock) = crate::utils::error_handling::safe_lock(&is_finished_clone, "AudioController") {
+                                *lock = true;
+                            }
                         }
                         AudioCommand::SetVolume(vol) => {
-                            *current_volume_clone.lock().unwrap() = vol;
+                            if let Some(mut lock) = crate::utils::error_handling::safe_lock(&current_volume_clone, "AudioController") {
+                                *lock = vol;
+                            }
                             if let Some(p) = player.as_mut() {
                                 p.set_volume(vol);
                             }
@@ -129,12 +153,14 @@ impl AudioController {
                         AudioCommand::Seek(pos) => {
                             log::debug!("[AudioController] Received Seek command to {:?}", pos);
                             if let Some(p) = player.as_mut() {
-                                let url = current_url_clone.lock().unwrap().clone();
-                                let token = current_token_clone.lock().unwrap().clone();
+                                let url = crate::utils::error_handling::safe_lock(&current_url_clone, "AudioController")
+                                    .and_then(|lock| lock.clone());
+                                let token = crate::utils::error_handling::safe_lock(&current_token_clone, "AudioController")
+                                    .and_then(|lock| lock.clone());
                                 if let (Some(u), Some(t)) = (url, token) {
                                     if let Err(e) = rt.block_on(p.seek(
-                                        pos, 
-                                        &u, 
+                                        pos,
+                                        &u,
                                         &t,
                                         Arc::clone(&bass_energy),
                                         Arc::clone(&mid_energy),
@@ -150,8 +176,12 @@ impl AudioController {
 
                 // Update position and finished status
                 if let Some(p) = player.as_ref() {
-                    *position_clone.lock().unwrap() = p.get_position();
-                    *is_finished_clone.lock().unwrap() = p.is_finished();
+                    if let Some(mut lock) = crate::utils::error_handling::safe_lock(&position_clone, "AudioController") {
+                        *lock = p.get_position();
+                    }
+                    if let Some(mut lock) = crate::utils::error_handling::safe_lock(&is_finished_clone, "AudioController") {
+                        *lock = p.is_finished();
+                    }
                 }
 
                 std::thread::sleep(Duration::from_millis(50));
@@ -194,14 +224,19 @@ impl AudioController {
     }
 
     pub fn get_position(&self) -> Duration {
-        *self.position.lock().unwrap()
+        crate::utils::error_handling::safe_lock(&self.position, "AudioController")
+            .map(|lock| *lock)
+            .unwrap_or(Duration::ZERO)
     }
 
     pub fn get_duration(&self) -> Option<Duration> {
-        *self.duration.lock().unwrap()
+        crate::utils::error_handling::safe_lock(&self.duration, "AudioController")
+            .and_then(|lock| *lock)
     }
 
     pub fn is_finished(&self) -> bool {
-        *self.is_finished.lock().unwrap()
+        crate::utils::error_handling::safe_lock(&self.is_finished, "AudioController")
+            .map(|lock| *lock)
+            .unwrap_or(true) // Default to finished on error
     }
 }

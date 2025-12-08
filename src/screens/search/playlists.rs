@@ -6,7 +6,7 @@ use std::sync::mpsc::channel;
 
 /// Render playlists search results grid with pagination
 pub fn render_playlists_grid_paginated(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    if app.search_results_playlists.is_empty() {
+    if app.content.search_results_playlists.is_empty() {
         ui.vertical_centered(|ui| {
             ui.add_space(100.0);
             ui.label(
@@ -25,15 +25,15 @@ pub fn render_playlists_grid_paginated(app: &mut MusicPlayerApp, ui: &mut egui::
     }
 
     // Calculate pagination
-    let offset = app.search_page * app.search_page_size;
-    let end = (offset + app.search_page_size).min(app.search_results_playlists.len());
+    let offset = app.content.search_page * app.content.search_page_size;
+    let end = (offset + app.content.search_page_size).min(app.content.search_results_playlists.len());
     
-    if offset >= app.search_results_playlists.len() {
+    if offset >= app.content.search_results_playlists.len() {
         // Reset to first page if out of bounds
         return;
     }
     
-    let page_playlists: Vec<_> = app.search_results_playlists[offset..end].to_vec();
+    let page_playlists: Vec<_> = app.content.search_results_playlists[offset..end].to_vec();
     let (items_per_row, padding) = calculate_grid_layout(ui.available_width(), 220.0, 15.0);
 
     ui.add_space(10.0);
@@ -78,7 +78,7 @@ fn render_playlist_item(
 
     if !artwork_url.is_empty() {
         // Check memory cache first (fast path)
-        if let Some(texture) = app.thumb_cache.get(&artwork_url) {
+        if let Some(texture) = app.ui.thumb_cache.get(&artwork_url) {
             ui.painter().image(
                 texture.id(),
                 artwork_rect,
@@ -161,9 +161,9 @@ fn load_playlist(app: &mut MusicPlayerApp, playlist: &crate::app::playlists::Pla
             .collect();
 
         if !preview_tracks.is_empty() {
-            app.playback_queue.load_tracks(preview_tracks);
+            app.audio.playback_queue.load_tracks(preview_tracks);
 
-            if let Some(first_track) = app.playback_queue.current_track() {
+            if let Some(first_track) = app.audio.playback_queue.current_track() {
                 let track_id = first_track.id;
                 app.play_track(track_id);
             }
@@ -171,7 +171,7 @@ fn load_playlist(app: &mut MusicPlayerApp, playlist: &crate::app::playlists::Pla
     } else if needs_full_fetch {
         // No preview tracks, clear queue and prepare for chunked loading
         log::info!("[Search] No preview tracks, clearing queue for fresh load");
-        app.playback_queue.load_tracks(Vec::new());
+        app.audio.playback_queue.load_tracks(Vec::new());
     }
 
     // If playlist is larger than preview, fetch full content in chunks
@@ -182,7 +182,7 @@ fn load_playlist(app: &mut MusicPlayerApp, playlist: &crate::app::playlists::Pla
         );
 
         let playlist_id = playlist.id;
-        let token = match app.app_state.get_token() {
+        let token = match app.content.app_state.get_token() {
             Some(t) => t,
             None => {
                 log::error!(
@@ -193,8 +193,8 @@ fn load_playlist(app: &mut MusicPlayerApp, playlist: &crate::app::playlists::Pla
         };
 
         let (tx, rx) = channel();
-        app.playlist_chunk_rx = Some(rx);
-        app.playlist_loading_id = Some(playlist_id);
+        app.tasks.playlist_chunk_rx = Some(rx);
+        app.content.playlist_loading_id = Some(playlist_id);
 
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();

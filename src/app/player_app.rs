@@ -12,199 +12,32 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-pub enum AppScreen {
-    Splash,
-    Main,
-}
+// State modules
+use crate::state::{AudioState, AuthState, UIState, ContentState, BackgroundTasks};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum MainTab {
-    Home,
-    NowPlaying,
-    Search,
-    History,
-    Suggestions,
-    Likes,
-    Playlists,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SearchType {
-    Tracks,
-    Playlists,
-}
+// Re-export enums from state modules for convenience
+pub use crate::state::ui_state::{AppScreen, MainTab};
+pub use crate::state::content_state::{SearchType, LikesSortOrder, PlaylistsSortOrder, SuggestionsSortOrder};
+pub use crate::state::background_tasks::SearchResults;
 
 #[allow(dead_code)]
 pub struct MusicPlayerApp {
-    pub screen: AppScreen,
-    pub selected_tab: MainTab,
-    pub logo_texture: Option<egui::TextureHandle>,
-    
-    // Shared app state
-    pub app_state: AppState,
-    
-    // Toast notification system
-    pub toast_manager: crate::ui_components::toast::ToastManager,
-    
-    // Audio playback
-    pub audio_controller: AudioController,
-    pub playback_queue: PlaybackQueue,
-    
-    // Current track info
-    pub current_track_id: Option<u64>,
-    pub last_track_id: Option<u64>, // Track last playing track for auto-scroll
-    pub current_title: String,
-    pub current_artist: String,
-    pub current_genre: Option<String>,
-    pub current_duration_ms: u64,
-    pub current_stream_url: Option<String>,
-    pub current_permalink_url: Option<String>,
-    pub track_start_time: Option<Instant>,
-    
+    // Audio state (playback, track info, FFT analysis, controls)
+    pub audio: AudioState,
 
-    
-    // Artwork
-    pub artwork_texture: Option<egui::TextureHandle>,
-    pub artwork_loading: bool,
-    pub artwork_rx: Option<Receiver<egui::ColorImage>>,
-    pub artwork_dominant_color: egui::Color32,
-    pub artwork_edge_colors: [egui::Color32; 4], // Ambilight effect: [top, right, bottom, left]
-    pub thumb_cache: HashMap<String, egui::TextureHandle>,
-    pub thumb_pending: HashMap<String, bool>,
-    pub no_artwork_texture: Option<egui::TextureHandle>,
-    
-    // Ambient glow
-    pub glow_intensity: f32,
-    pub glow_smooth_intensity: f32,
-    pub last_frame_time: Option<Instant>,
-    pub audio_amplitude: f32,  // Real-time audio level (0.0-1.0) for reactive visuals
-    pub last_playback_error: Option<String>, // Track last playback error for UI display
-    
-    // Real-time FFT audio analysis
-    pub bass_energy: std::sync::Arc<std::sync::Mutex<f32>>,
-    pub mid_energy: std::sync::Arc<std::sync::Mutex<f32>>,
-    pub high_energy: std::sync::Arc<std::sync::Mutex<f32>>,
-    
-    // Shader management (consolidated into single manager)
-    pub shader_manager: crate::app::shader_manager::ShaderManager,
-    
-    // Playback controls
-    pub is_playing: bool,
-    pub shuffle_mode: bool,
-    pub repeat_mode: RepeatMode,
-    pub volume: f32,
-    pub muted: bool,
-    pub volume_before_mute: f32,
-    pub show_volume_popup: bool,
-    
-    // Shutdown handling
-    pub show_exit_confirmation: bool,
-    pub is_shutting_down: bool,
-    
-    // Seeking
-    pub is_seeking: bool,
-    pub seek_target_pos: Option<Duration>,
-    
-    // OAuth
-    pub oauth_manager: Option<OAuthManager>,
-    pub is_authenticating: bool,
-    pub login_message_shown: bool,
-    pub refresh_attempted: bool,
-    pub token_check_done: bool, // Cache flag to prevent DB spam on every frame
-    pub refresh_in_progress: bool, // Prevent token clear while refresh is active
-    
-    // User info
-    pub user_avatar_url: Option<String>,
-    pub user_avatar_texture: Option<egui::TextureHandle>,
-    pub user_avatar_rx: Option<Receiver<egui::ColorImage>>,
-    pub user_username: Option<String>,
-    pub show_user_menu: bool,
-    
-    // Token validation
-    pub last_token_check: Option<Instant>,
-    pub token_check_interval: Duration,
-    
-    // Search state
-    pub search_query: String,
-    pub search_type: SearchType,
-    pub search_expanded: bool,
-    pub search_results_tracks: Vec<APITrack>,
-    pub search_results_playlists: Vec<crate::app::playlists::Playlist>,
-    pub search_loading: bool,
-    pub search_next_href: Option<String>,
-    pub search_has_more: bool,
-    pub search_rx: Option<Receiver<SearchResults>>,
-    pub search_page: usize,
-    pub search_page_size: usize,
-    pub playlist_rx: Option<Receiver<crate::app::playlists::Playlist>>,
-    pub playlist_chunk_rx: Option<Receiver<Vec<crate::app::playlists::Track>>>,
-    
-    // Playlist view
-    pub selected_playlist_id: Option<u64>,
-    pub playlist_loading_id: Option<u64>,
-    
-    // Home screen content
-    pub home_content: HomeContent,
-    pub home_recently_played_rx: Option<Receiver<Vec<crate::app::playlists::Track>>>,
-    pub home_recommendations_rx: Option<Receiver<Vec<crate::app::playlists::Track>>>,
-    pub home_loading: bool,
-    pub home_recommendations_loading: bool,
-    pub track_fetch_rx: Option<Receiver<Result<Vec<crate::app::playlists::Track>, String>>>,
+    // Auth state (OAuth, user info, token validation)
+    pub auth: AuthState,
 
-    // Suggestions screen (paginated recommendations)
-    pub suggestions_tracks: Vec<crate::app::playlists::Track>,
-    pub suggestions_page: usize,
-    pub suggestions_page_size: usize,
-    pub suggestions_loading: bool,
-    pub suggestions_rx: Option<Receiver<Vec<crate::app::playlists::Track>>>,
-    pub suggestions_initial_fetch_done: bool,
+    // UI state (navigation, visuals, artwork, shaders, controls, splash)
+    pub ui: UIState,
 
-    // Likes screen (liked tracks + user uploaded tracks)
-    pub likes_tracks: Vec<crate::app::playlists::Track>,
-    pub user_tracks: Vec<crate::app::playlists::Track>,
-    pub likes_page: usize,
-    pub likes_page_size: usize,
-    pub likes_loading: bool,
-    pub likes_tracks_rx: Option<Receiver<Vec<crate::app::playlists::Track>>>,
-    pub user_tracks_rx: Option<Receiver<Vec<crate::app::playlists::Track>>>,
-    pub likes_initial_fetch_done: bool,
-    pub liked_track_ids: std::collections::HashSet<u64>,  // Track IDs that are liked
+    // Content state (search, playlists, home, suggestions, likes, history)
+    pub content: ContentState,
 
-
-    // Playlists screen (user's playlists)
-    pub playlists: Vec<crate::app::playlists::Playlist>,
-    pub liked_playlist_ids: std::collections::HashSet<u64>,  // Playlist IDs that are liked
-    pub user_created_playlist_ids: std::collections::HashSet<u64>,  // Playlist IDs created by user
-    pub playlists_page: usize,
-    pub playlists_page_size: usize,
-    pub playlists_loading: bool,
-    pub playlists_rx: Option<Receiver<(Vec<crate::app::playlists::Playlist>, Vec<u64>)>>,
-    pub playlists_initial_fetch_done: bool,
-
-    // Playback history database
-    pub playback_history: PlaybackHistoryDB,
-    
-    // History view pagination
-    pub history_page: usize,           // Current page (0-indexed)
-    pub history_page_size: usize,      // Tracks per page
-    pub history_total_tracks: usize,   // Total tracks in DB
-    pub history_search_filter: String, // Search/filter text
-    pub history_sort_order: crate::screens::history::HistorySortOrder, // Sort order
-
-    // Splash screen timer
-    pub splash_start_time: Option<Instant>,
-    pub splash_min_duration: Duration,
-    
-    // UI state
-    pub queue_collapsed: bool,  // Toggle queue sidebar visibility
-
+    // Background tasks (receivers for async operations)
+    pub tasks: BackgroundTasks,
 }
 
-pub struct SearchResults {
-    pub tracks: Vec<APITrack>,
-    pub playlists: Vec<crate::app::playlists::Playlist>,
-    pub next_href: Option<String>,
-}
 
 impl Default for MusicPlayerApp {
     fn default() -> Self {
@@ -217,19 +50,20 @@ impl Default for MusicPlayerApp {
         //         }
         //     }
         // });
-        
+
         // Initialize OAuth manager with credentials from main.rs
         let oauth_manager = {
             use crate::utils::oauth::OAuthConfig;
-            
+
             let client_id = crate::SOUNDCLOUD_CLIENT_ID.to_string();
             let client_secret = crate::SOUNDCLOUD_CLIENT_SECRET.to_string();
             let redirect_uri = "http://localhost:3000/callback".to_string();
             let config = OAuthConfig::new(client_id, client_secret, redirect_uri);
-            
+
             OAuthManager::new(config)
         };
-        
+
+        // Load app state to get saved volume/shuffle/repeat preferences
         let app_state = AppState::new();
         let volume = app_state.get_volume();
         let muted = app_state.is_muted();
@@ -237,172 +71,55 @@ impl Default for MusicPlayerApp {
         let repeat_mode = app_state.get_repeat_mode();
         let volume_before_mute = if muted { volume } else { 0.7 };
 
+        // Create ContentState with app_state and custom page sizes (12 for grid layout)
+        let mut content = ContentState::default();
+        content.app_state = app_state;
+        content.search_page_size = 12;
+        content.suggestions_page_size = 12;
+        content.likes_page_size = 12;
+        content.playlists_page_size = 12;
+        content.history_page_size = 12;
+        content.home_content = HomeContent::new();
+
+        // Create UIState with custom splash duration (2 seconds)
+        let mut ui = UIState::default();
+        ui.splash_min_duration = Duration::from_secs(2);
+        ui.artwork_dominant_color = egui::Color32::from_rgb(255, 85, 0);
+        ui.artwork_edge_colors = [
+            egui::Color32::from_rgb(255, 85, 0),
+            egui::Color32::from_rgb(255, 85, 0),
+            egui::Color32::from_rgb(255, 85, 0),
+            egui::Color32::from_rgb(255, 85, 0),
+        ];
+
         Self {
-            screen: AppScreen::Splash,
-            selected_tab: MainTab::Home,
-            logo_texture: None,
-            
-            // Start splash timer immediately with minimum 2 second display
-            // This prevents window from acting weirdly during initialization
-            splash_start_time: Some(Instant::now()),
-            splash_min_duration: Duration::from_secs(2),
-            
-            // Shared state
-            app_state,
-            
-            // Toast notifications
-            toast_manager: crate::ui_components::toast::ToastManager::new(),
-            
-            // Real-time FFT analysis
-            bass_energy: std::sync::Arc::new(std::sync::Mutex::new(0.0)),
-            mid_energy: std::sync::Arc::new(std::sync::Mutex::new(0.0)),
-            high_energy: std::sync::Arc::new(std::sync::Mutex::new(0.0)),
-            
-            // Shader management (will be initialized in new())
-            shader_manager: crate::app::shader_manager::ShaderManager::new(),
-            
-            // Audio - AudioController will be reassigned after struct is built
-            audio_controller: AudioController::new(
-                std::sync::Arc::new(std::sync::Mutex::new(0.0)),
-                std::sync::Arc::new(std::sync::Mutex::new(0.0)),
-                std::sync::Arc::new(std::sync::Mutex::new(0.0)),
-            ),
-            playback_queue: PlaybackQueue::new(),
-            
-            // Current track
-            current_track_id: None,
-            last_track_id: None,
-            current_title: String::new(),
-            current_artist: String::new(),
-            current_genre: None,
-            current_duration_ms: 0,
-            current_stream_url: None,
-            current_permalink_url: None,
-            track_start_time: None,
-            
-            // Artwork
-            artwork_texture: None,
-            artwork_loading: false,
-            artwork_rx: None,
-            artwork_dominant_color: egui::Color32::from_rgb(255, 85, 0),
-            artwork_edge_colors: [
-                egui::Color32::from_rgb(255, 85, 0),
-                egui::Color32::from_rgb(255, 85, 0),
-                egui::Color32::from_rgb(255, 85, 0),
-                egui::Color32::from_rgb(255, 85, 0),
-            ],
-            thumb_cache: HashMap::new(),
-            thumb_pending: HashMap::new(),
-            no_artwork_texture: None,
-            
-            // Ambient glow
-            glow_intensity: 0.0,
-            glow_smooth_intensity: 0.0,
-            last_frame_time: None,
-            audio_amplitude: 0.0,
-            last_playback_error: None,
-            
-            // Playback
-            is_playing: false,
-            shuffle_mode,
-            repeat_mode,
-            volume,
-            muted,
-            volume_before_mute,
-            show_volume_popup: false,
-            
-            // Shutdown
-            show_exit_confirmation: false,
-            is_shutting_down: false,
-            
-            // Seeking
-            is_seeking: false,
-            seek_target_pos: None,
-            
-            // OAuth
-            oauth_manager: Some(oauth_manager),
-            is_authenticating: false,
-            login_message_shown: false,
-            refresh_attempted: false,
-            token_check_done: false,
-            refresh_in_progress: false,
-            
-            // User info
-            user_avatar_url: None,
-            user_avatar_texture: None,
-            user_avatar_rx: None,
-            user_username: None,
-            show_user_menu: false,
-            
-            // Token validation
-            last_token_check: None,
-            token_check_interval: Duration::from_secs(60), // Check every 60 seconds
-            
-            // Search
-            search_query: String::new(),
-            search_type: SearchType::Tracks,
-            search_expanded: false,
-            search_results_tracks: Vec::new(),
-            search_results_playlists: Vec::new(),
-            search_loading: false,
-            search_next_href: None,
-            search_has_more: false,
-            search_rx: None,
-            search_page: 0,
-            search_page_size: 12, // 2-3 rows x 5 cards
-            playlist_rx: None,
-            playlist_chunk_rx: None,
-            selected_playlist_id: None,
-            playlist_loading_id: None,
-            
-            // Home content
-            home_content: HomeContent::new(),
-            home_recently_played_rx: None,
-            home_recommendations_rx: None,
-            home_loading: false,
-            home_recommendations_loading: false,
-            track_fetch_rx: None,
+            // Audio state (with volume/shuffle/repeat from app_state)
+            audio: {
+                let mut audio_state = AudioState::default();
+                audio_state.volume = volume;
+                audio_state.muted = muted;
+                audio_state.volume_before_mute = volume_before_mute;
+                audio_state.shuffle_mode = shuffle_mode;
+                audio_state.repeat_mode = repeat_mode;
+                audio_state
+            },
 
-            // Suggestions screen
-            suggestions_tracks: Vec::new(),
-            suggestions_page: 0,
-            suggestions_page_size: 12,  // 2-3 rows x 5 cards
-            suggestions_loading: false,
-            suggestions_rx: None,
-            suggestions_initial_fetch_done: false,
+            // Auth state (with OAuth manager and 60s token check interval)
+            auth: {
+                let mut auth_state = AuthState::default();
+                auth_state.oauth_manager = Some(oauth_manager);
+                auth_state.token_check_interval = Duration::from_secs(60);
+                auth_state
+            },
 
-            // Likes screen
-            likes_tracks: Vec::new(),
-            user_tracks: Vec::new(),
-            likes_page: 0,
-            likes_page_size: 12,
-            likes_loading: false,
-            likes_tracks_rx: None,
-            user_tracks_rx: None,
-            likes_initial_fetch_done: false,
-            liked_track_ids: std::collections::HashSet::new(),
+            // UI state (with custom splash duration and artwork colors)
+            ui,
 
+            // Content state (with app_state and custom page sizes)
+            content,
 
-            // Playlists screen
-            playlists: Vec::new(),
-            liked_playlist_ids: std::collections::HashSet::new(),
-            user_created_playlist_ids: std::collections::HashSet::new(),
-            playlists_page: 0,
-            playlists_page_size: 12,
-            playlists_loading: false,
-            playlists_rx: None,
-            playlists_initial_fetch_done: false,
-
-            // Playback history
-            playback_history: PlaybackHistoryDB::default(),
-            history_page: 0,
-            history_page_size: 12,  // 2-3 rows x 5 cards
-            history_total_tracks: 0,
-            history_search_filter: String::new(),
-            history_sort_order: crate::screens::history::HistorySortOrder::RecentFirst,
-            
-            // UI state
-            queue_collapsed: false,  // Queue visible by default
+            // Background tasks (all None by default)
+            tasks: BackgroundTasks::default(),
         }
     }
 }
@@ -411,26 +128,22 @@ impl MusicPlayerApp {
     /// Create a new MusicPlayerApp with shader initialized from eframe CreationContext
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
-        
-        // Recreate AudioController with proper FFT handles
-        app.audio_controller = AudioController::new(
-            Arc::clone(&app.bass_energy),
-            Arc::clone(&app.mid_energy),
-            Arc::clone(&app.high_energy),
-        );
-        
+
+        // AudioController is already properly initialized in AudioState::default()
+        // with the correct FFT handles, so no need to recreate it here
+
         // Initialize shaders using ShaderManager
-        app.shader_manager.initialize(cc.wgpu_render_state.as_ref());
-        
+        app.ui.shader_manager.initialize(cc.wgpu_render_state.as_ref());
+
         app
     }
-    
+
     /// Save playback configuration to app state
     pub fn save_playback_config(&self) {
-        self.app_state.set_volume(self.volume);
-        self.app_state.set_muted(self.muted);
-        self.app_state.set_shuffle_mode(self.shuffle_mode);
-        self.app_state.set_repeat_mode(self.repeat_mode);
+        self.content.app_state.set_volume(self.audio.volume);
+        self.content.app_state.set_muted(self.audio.muted);
+        self.content.app_state.set_shuffle_mode(self.audio.shuffle_mode);
+        self.content.app_state.set_repeat_mode(self.audio.repeat_mode);
     }
     
     /// Request artwork fetch in background
@@ -443,65 +156,65 @@ impl MusicPlayerApp {
         if let Some(cached_bytes) = crate::utils::cache::load_artwork_cache(track_id) {
             if let Ok(img) = crate::utils::artwork::load_artwork_from_bytes(&cached_bytes) {
                 let (tx, rx) = channel::<egui::ColorImage>();
-                self.artwork_rx = Some(rx);
+                self.tasks.artwork_rx = Some(rx);
                 let _ = tx.send(img);
-                self.artwork_loading = false;
+                self.ui.artwork_loading = false;
                 return;
             }
         }
         
-        self.artwork_loading = true;
-        self.artwork_texture = None;
+        self.ui.artwork_loading = true;
+        self.ui.artwork_texture = None;
         
         let (_cancel_tx, rx) = crate::utils::artwork::fetch_artwork(track_id, artwork_url.to_string());
-        self.artwork_rx = Some(rx);
+        self.tasks.artwork_rx = Some(rx);
     }
     
     /// Check for received artwork from background thread
     pub fn check_artwork(&mut self, ctx: &egui::Context) {
-        if let Some(rx) = &self.artwork_rx {
+        if let Some(rx) = &self.tasks.artwork_rx {
             if let Ok(img) = rx.try_recv() {
                 // Extract dominant color for ambient glow
-                self.artwork_dominant_color = crate::utils::artwork::extract_dominant_color(&img);
+                self.ui.artwork_dominant_color = crate::utils::artwork::extract_dominant_color(&img);
                 
                 // Extract edge colors for Ambilight effect
-                self.artwork_edge_colors = crate::utils::artwork::extract_edge_colors(&img);
+                self.ui.artwork_edge_colors = crate::utils::artwork::extract_edge_colors(&img);
                 
-                self.artwork_texture = Some(ctx.load_texture(
+                self.ui.artwork_texture = Some(ctx.load_texture(
                     "artwork",
                     img,
                     egui::TextureOptions::LINEAR,
                 ));
-                self.artwork_loading = false;
-                self.artwork_rx = None;
+                self.ui.artwork_loading = false;
+                self.tasks.artwork_rx = None;
             }
         }
     }
 
     /// Play a track by ID
     pub fn play_track(&mut self, track_id: u64) {
-        info!("[PLAY] play_track({}) called - is_playing={}, current_track_id={:?}", track_id, self.is_playing, self.current_track_id);
+        info!("[PLAY] play_track({}) called - is_playing={}, current_track_id={:?}", track_id, self.audio.is_playing, self.audio.current_track_id);
         
         // Don't send stop command - the audio controller will replace the old player automatically
         // This prevents interrupting the download of new track
-        self.is_playing = false; // Temporarily set to false, will be set to true when playback starts
+        self.audio.is_playing = false; // Temporarily set to false, will be set to true when playback starts
         
         // Clear previous errors
-        self.last_playback_error = None;
+        self.ui.last_playback_error = None;
         
         // Note: Token validity is checked by periodic check_token_expiry() which runs every 60s
         // and automatically refreshes before expiry. No need to check here.
         
         // Update queue position to the selected track
-        self.playback_queue.jump_to_track_id(track_id);
+        self.audio.playback_queue.jump_to_track_id(track_id);
         
         // Get track from queue (which has the current tracks loaded)
-        let track = match self.playback_queue.current_track() {
+        let track = match self.audio.playback_queue.current_track() {
             Some(t) => t.clone(),
             None => {
                 let error_msg = format!("Track {} not found in queue", track_id);
                 warn!("{}", error_msg);
-                self.last_playback_error = Some(error_msg);
+                self.ui.last_playback_error = Some(error_msg);
                 return;
             }
         };
@@ -518,7 +231,7 @@ impl MusicPlayerApp {
         if !crate::utils::track_filter::is_track_playable(&track) {
             let error_msg = format!("Track '{}' is not playable (geo-blocked or preview-only)", track.title);
             log::warn!("{}", error_msg);
-            self.last_playback_error = Some(error_msg);
+            self.ui.last_playback_error = Some(error_msg);
             
             // Auto-skip to next track instead of stopping playback
             log::info!("[PLAY] Auto-skipping to next track...");
@@ -530,30 +243,30 @@ impl MusicPlayerApp {
         let artwork_url = track.artwork_url.clone();
 
         // Update current track info
-        self.current_track_id = Some(track.id);
-        self.current_title = track.title.clone();
-        self.current_artist = track.user.username.clone();
-        self.current_genre = track.genre.clone();
-        self.current_duration_ms = track.duration;
-        self.current_stream_url = track.stream_url.clone();
-        self.current_permalink_url = track.permalink_url.clone();
+        self.audio.current_track_id = Some(track.id);
+        self.audio.current_title = track.title.clone();
+        self.audio.current_artist = track.user.username.clone();
+        self.audio.current_genre = track.genre.clone();
+        self.audio.current_duration_ms = track.duration;
+        self.audio.current_stream_url = track.stream_url.clone();
+        self.audio.current_permalink_url = track.permalink_url.clone();
         
         // Fetch artwork if available, otherwise clear old artwork
         if let Some(url) = artwork_url {
             self.request_artwork_fetch(track.id, &url);
         } else {
             // No artwork for this track - clear previous artwork
-            self.artwork_texture = None;
+            self.ui.artwork_texture = None;
         }
         
         // Start playback if we have a stream URL
-        if let (Some(stream_url), Some(oauth)) = (&self.current_stream_url, &self.oauth_manager) {
+        if let (Some(stream_url), Some(oauth)) = (&self.audio.current_stream_url, &self.auth.oauth_manager) {
             if let Some(token) = crate::utils::token_helper::get_valid_token_sync(oauth) {
-                log::info!("Playing: {} by {}", self.current_title, self.current_artist);
-                self.audio_controller.play(stream_url.clone(), token.access_token.clone(), track.id);
-                self.is_playing = true;
-                log::info!("[PLAY] Playback started - is_playing={}", self.is_playing);
-                self.track_start_time = Some(Instant::now());
+                log::info!("Playing: {} by {}", self.audio.current_title, self.audio.current_artist);
+                self.audio.audio_controller.play(stream_url.clone(), token.access_token.clone(), track.id);
+                self.audio.is_playing = true;
+                log::info!("[PLAY] Playback started - is_playing={}", self.audio.is_playing);
+                self.audio.track_start_time = Some(Instant::now());
                 
                 // Record this track to playback history (only when actually played)
                 crate::app::queue::record_track_to_history(&track);
@@ -563,48 +276,48 @@ impl MusicPlayerApp {
             } else {
                 let error_msg = "Failed to get authentication token";
                 error!("{}", error_msg);
-                self.last_playback_error = Some(error_msg.to_string());
+                self.ui.last_playback_error = Some(error_msg.to_string());
             }
         } else {
-            let error_msg = if self.current_stream_url.is_none() {
-                format!("Track '{}' has no stream URL (not streamable)", self.current_title)
+            let error_msg = if self.audio.current_stream_url.is_none() {
+                format!("Track '{}' has no stream URL (not streamable)", self.audio.current_title)
             } else {
                 "Authentication required".to_string()
             };
             error!("{}", error_msg);
-            self.last_playback_error = Some(error_msg);
+            self.ui.last_playback_error = Some(error_msg);
         }
     }
     
     /// Toggle play/pause
     pub fn toggle_playback(&mut self) {
-        log::info!("[TOGGLE] toggle_playback called - is_playing={}, has_track={}", self.is_playing, self.current_track_id.is_some());
+        log::info!("[TOGGLE] toggle_playback called - is_playing={}, has_track={}", self.audio.is_playing, self.audio.current_track_id.is_some());
         
         // Don't do anything if no track is loaded
-        if self.current_track_id.is_none() {
+        if self.audio.current_track_id.is_none() {
             log::warn!("[TOGGLE] Ignoring toggle - no track loaded");
             return;
         }
         
-        if self.is_playing {
+        if self.audio.is_playing {
             log::info!("[TOGGLE] Pausing playback");
-            self.audio_controller.pause();
-            self.is_playing = false;
+            self.audio.audio_controller.pause();
+            self.audio.is_playing = false;
         } else {
             // Check if track was stopped (track_start_time is None) or finished
-            if self.track_start_time.is_none() || self.audio_controller.is_finished() {
+            if self.audio.track_start_time.is_none() || self.audio.audio_controller.is_finished() {
                 // Track was stopped or finished, restart from beginning
-                if let Some(track_id) = self.current_track_id {
+                if let Some(track_id) = self.audio.current_track_id {
                     log::info!("[TOGGLE] Track finished, restarting from beginning");
                     // Reset timing for restart
-                    self.track_start_time = Some(std::time::Instant::now());
+                    self.audio.track_start_time = Some(std::time::Instant::now());
                     self.play_track(track_id);
                 }
             } else {
                 // Normal resume from pause
                 log::info!("[TOGGLE] Resuming playback");
-                self.audio_controller.resume();
-                self.is_playing = true;
+                self.audio.audio_controller.resume();
+                self.audio.is_playing = true;
             }
         }
     }
@@ -612,13 +325,13 @@ impl MusicPlayerApp {
     /// Stop playback and reset state (ready to play another track)
     pub fn stop_playback(&mut self) {
         log::info!("[STOP] Stopping playback - clearing track state to hide player controls");
-        self.audio_controller.stop();
-        self.is_playing = false;
-        self.last_playback_error = None;
+        self.audio.audio_controller.stop();
+        self.audio.is_playing = false;
+        self.ui.last_playback_error = None;
         // Clear track ID to hide player controls
-        self.current_track_id = None;
+        self.audio.current_track_id = None;
         // Reset track timing so it restarts from beginning
-        self.track_start_time = None;
+        self.audio.track_start_time = None;
     }
     
     /// Gracefully cleanup all resources before exit
@@ -626,15 +339,15 @@ impl MusicPlayerApp {
         log::info!("[Shutdown] Starting graceful cleanup...");
         
         // 1. Stop audio playback and cleanup audio threads
-        if self.is_playing {
+        if self.audio.is_playing {
             log::info!("[Shutdown] Stopping audio playback...");
-            self.audio_controller.stop();
-            self.is_playing = false;
+            self.audio.audio_controller.stop();
+            self.audio.is_playing = false;
         }
         
         // Explicitly drop audio controller to free resources
         log::info!("[Shutdown] Releasing audio resources...");
-        let _ = &mut self.audio_controller;
+        let _ = &mut self.audio.audio_controller;
         
         // 2. Save playback configuration
         log::info!("[Shutdown] Saving playback configuration...");
@@ -642,28 +355,28 @@ impl MusicPlayerApp {
         
         // 3. Clear all pending receivers to prevent thread leaks
         log::info!("[Shutdown] Clearing pending background tasks...");
-        self.artwork_rx = None;
-        self.user_avatar_rx = None;
-        self.search_rx = None;
-        self.playlist_rx = None;
-        self.playlist_chunk_rx = None;
-        self.home_recently_played_rx = None;
-        self.home_recommendations_rx = None;
-        self.track_fetch_rx = None;
-        self.suggestions_rx = None;
+        self.tasks.artwork_rx = None;
+        self.tasks.user_avatar_rx = None;
+        self.tasks.search_rx = None;
+        self.tasks.playlist_rx = None;
+        self.tasks.playlist_chunk_rx = None;
+        self.tasks.home_recently_played_rx = None;
+        self.tasks.home_recommendations_rx = None;
+        self.tasks.track_fetch_rx = None;
+        self.tasks.suggestions_rx = None;
         
         // 4. Clear texture caches
         log::info!("[Shutdown] Clearing texture caches...");
-        self.thumb_cache.clear();
-        self.artwork_texture = None;
-        self.user_avatar_texture = None;
-        self.no_artwork_texture = None;
+        self.ui.thumb_cache.clear();
+        self.ui.artwork_texture = None;
+        self.auth.user_avatar_texture = None;
+        self.ui.no_artwork_texture = None;
         
         // 5. OAuth manager cleanup (tokens are already encrypted in DB)
         log::info!("[Shutdown] Cleaning up OAuth resources...");
-        if self.oauth_manager.is_some() {
+        if self.auth.oauth_manager.is_some() {
             // OAuth tokens are persisted in encrypted database, safe to drop
-            self.oauth_manager = None;
+            self.auth.oauth_manager = None;
         }
         
         // Shaders are managed by ShaderManager, will be cleaned up automatically
@@ -678,30 +391,23 @@ impl MusicPlayerApp {
     #[allow(dead_code)]
     pub fn reset_player_state(&mut self) {
         info!("[RESET] Resetting player to clean state");
-        info!("[RESET] Before: is_playing={}, current_track_id={:?}", self.is_playing, self.current_track_id);
-        self.audio_controller.stop();
-        self.is_playing = false;
-        self.last_playback_error = None; // Clear any error on reset
-        self.current_track_id = None;
-        self.current_title = String::new();
-        self.current_artist = String::new();
-        self.current_genre = None;
-        self.current_duration_ms = 0;
-        self.current_stream_url = None;
-        self.track_start_time = None;
-        self.artwork_texture = None;
-        log::info!("[RESET] After: is_playing={}, current_track_id={:?}", self.is_playing, self.current_track_id);
+        info!("[RESET] Before: is_playing={}, current_track_id={:?}", self.audio.is_playing, self.audio.current_track_id);
+        self.audio.audio_controller.stop();
+        self.audio.reset_track(); // Use AudioState helper method
+        self.ui.last_playback_error = None; // Clear any error on reset
+        self.ui.artwork_texture = None;
+        log::info!("[RESET] After: is_playing={}, current_track_id={:?}", self.audio.is_playing, self.audio.current_track_id);
     }
 
     /// Play next track in queue
     pub fn play_next(&mut self) {
-        let next_track_id = self.playback_queue.next().map(|t| t.id);
+        let next_track_id = self.audio.playback_queue.next().map(|t| t.id);
         
         if let Some(track_id) = next_track_id {
             self.play_track(track_id);
-        } else if self.repeat_mode == RepeatMode::All {
+        } else if self.audio.repeat_mode == RepeatMode::All {
             // Loop back to start
-            let first_track_id = self.playback_queue.loop_to_start().map(|t| t.id);
+            let first_track_id = self.audio.playback_queue.loop_to_start().map(|t| t.id);
             if let Some(track_id) = first_track_id {
                 self.play_track(track_id);
             }
@@ -710,7 +416,7 @@ impl MusicPlayerApp {
 
     /// Play previous track in queue
     pub fn play_previous(&mut self) {
-        let prev_track_id = self.playback_queue.previous().map(|t| t.id);
+        let prev_track_id = self.audio.playback_queue.previous().map(|t| t.id);
         
         if let Some(track_id) = prev_track_id {
             self.play_track(track_id);
@@ -719,10 +425,10 @@ impl MusicPlayerApp {
 
     /// Toggle shuffle mode
     pub fn toggle_shuffle(&mut self) {
-        self.shuffle_mode = !self.shuffle_mode;
-        self.playback_queue.set_shuffle(self.shuffle_mode);
+        self.audio.shuffle_mode = !self.audio.shuffle_mode;
+        self.audio.playback_queue.set_shuffle(self.audio.shuffle_mode);
         self.save_playback_config();
-        if self.shuffle_mode {
+        if self.audio.shuffle_mode {
             info!("Shuffle enabled");
         } else {
             info!("Shuffle disabled");
@@ -731,7 +437,7 @@ impl MusicPlayerApp {
 
     /// Cycle repeat mode
     pub fn cycle_repeat_mode(&mut self) {
-        self.repeat_mode = match self.repeat_mode {
+        self.audio.repeat_mode = match self.audio.repeat_mode {
             RepeatMode::None => {
                 info!("Repeat All enabled");
                 RepeatMode::All
@@ -739,9 +445,9 @@ impl MusicPlayerApp {
             RepeatMode::All => {
                 info!("Repeat One enabled");
                 // Disable shuffle when switching to Repeat One
-                if self.shuffle_mode {
-                    self.shuffle_mode = false;
-                    self.playback_queue.set_shuffle(false);
+                if self.audio.shuffle_mode {
+                    self.audio.shuffle_mode = false;
+                    self.audio.playback_queue.set_shuffle(false);
                     info!("Shuffle auto-disabled (incompatible with Repeat One)");
                 }
                 RepeatMode::One
@@ -756,49 +462,49 @@ impl MusicPlayerApp {
 
     /// Set volume
     pub fn set_volume(&mut self, volume: f32) {
-        self.volume = volume.clamp(0.0, 1.0);
-        self.audio_controller.set_volume(self.volume);
+        self.audio.volume = volume.clamp(0.0, 1.0);
+        self.audio.audio_controller.set_volume(self.audio.volume);
         self.save_playback_config();
     }
 
     /// Toggle mute
     pub fn toggle_mute(&mut self) {
-        if self.muted {
-            self.volume = self.volume_before_mute;
-            self.muted = false;
+        if self.audio.muted {
+            self.audio.volume = self.audio.volume_before_mute;
+            self.audio.muted = false;
         } else {
-            self.volume_before_mute = self.volume;
-            self.volume = 0.0;
-            self.muted = true;
+            self.audio.volume_before_mute = self.audio.volume;
+            self.audio.volume = 0.0;
+            self.audio.muted = true;
         }
-        self.audio_controller.set_volume(self.volume);
+        self.audio.audio_controller.set_volume(self.audio.volume);
         self.save_playback_config();
     }
 
     /// Seek to position
     pub fn seek_to(&mut self, position: Duration) {
-        self.audio_controller.seek(position);
-        self.is_seeking = true;
-        self.seek_target_pos = Some(position);
+        self.audio.audio_controller.seek(position);
+        self.ui.is_seeking = true;
+        self.ui.seek_target_pos = Some(position);
     }
 
     /// Get current playback position
     pub fn get_position(&self) -> Duration {
         // Always return actual audio position, UI handles seek preview
-        self.audio_controller.get_position()
+        self.audio.audio_controller.get_position()
     }
 
     /// Get track duration
     pub fn get_duration(&self) -> Duration {
-        self.audio_controller
+        self.audio.audio_controller
             .get_duration()
-            .unwrap_or(Duration::from_millis(self.current_duration_ms))
+            .unwrap_or(Duration::from_millis(self.audio.current_duration_ms))
     }
 
     /// Check if current track is liked
     pub fn is_current_track_liked(&self) -> bool {
-        if let Some(track_id) = self.current_track_id {
-            self.liked_track_ids.contains(&track_id)
+        if let Some(track_id) = self.audio.current_track_id {
+            self.content.liked_track_ids.contains(&track_id)
         } else {
             false
         }
@@ -806,7 +512,7 @@ impl MusicPlayerApp {
 
     /// Toggle like status of current track
     pub fn toggle_current_track_like(&mut self) {
-        if let Some(track_id) = self.current_track_id {
+        if let Some(track_id) = self.audio.current_track_id {
             self.toggle_like(track_id);
         } else {
             log::warn!("[Like] No track currently playing");
@@ -815,107 +521,41 @@ impl MusicPlayerApp {
     
     /// Toggle like status for any track by ID
     pub fn toggle_like(&mut self, track_id: u64) {
-        let is_liked = self.liked_track_ids.contains(&track_id);
-        
-        if is_liked {
-            // Unlike the track
-            log::info!("[Like] Unliking track {}", track_id);
-            self.liked_track_ids.remove(&track_id);
-            
-            // Show optimistic toast
-            self.toast_manager.show_info("Removed from Liked tracks");
-            
-            // Spawn background task to unlike via API
-            if let Some(token) = self.app_state.get_token() {
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        match crate::api::likes::unlike_track(&token, track_id).await {
-                            Ok(_) => log::info!("[Like] Successfully unliked track {}", track_id),
-                            Err(e) => log::error!("[Like] Failed to unlike track {}: {}", track_id, e),
-                        }
-                    });
-                });
+        let result = crate::services::toggle_like(
+            crate::services::LikeTarget::Track(track_id),
+            &mut self.content.liked_track_ids,
+            self.content.app_state.get_token(),
+        );
+
+        // Show appropriate toast based on result
+        if let Some(_token) = self.content.app_state.get_token() {
+            if result.is_liked {
+                self.ui.toast_manager.show_success(&result.success_message);
             } else {
-                log::warn!("[Like] No token available for unlike");
-                self.toast_manager.show_error("Not authenticated");
+                self.ui.toast_manager.show_info(&result.success_message);
             }
         } else {
-            // Like the track
-            log::info!("[Like] Liking track {}", track_id);
-            self.liked_track_ids.insert(track_id);
-            
-            // Show optimistic toast
-            self.toast_manager.show_success("Added to Liked tracks");
-            
-            // Spawn background task to like via API
-            if let Some(token) = self.app_state.get_token() {
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        match crate::api::likes::like_track(&token, track_id).await {
-                            Ok(_) => log::info!("[Like] Successfully liked track {}", track_id),
-                            Err(e) => log::error!("[Like] Failed to like track {}: {}", track_id, e),
-                        }
-                    });
-                });
-            } else {
-                log::warn!("[Like] No token available for like");
-                self.toast_manager.show_error("Not authenticated");
-            }
+            self.ui.toast_manager.show_error(&result.error_message);
         }
     }
     
     /// Toggle like status for a playlist by ID
     pub fn toggle_playlist_like(&mut self, playlist_id: u64) {
-        let is_liked = self.liked_playlist_ids.contains(&playlist_id);
-        
-        if is_liked {
-            // Unlike the playlist
-            log::info!("[Like] Unliking playlist {}", playlist_id);
-            self.liked_playlist_ids.remove(&playlist_id);
-            
-            // Show optimistic toast
-            self.toast_manager.show_info("Removed from Liked playlists");
-            
-            // Spawn background task to unlike via API
-            if let Some(token) = self.app_state.get_token() {
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        match crate::api::likes::unlike_playlist(&token, playlist_id).await {
-                            Ok(_) => log::info!("[Like] Successfully unliked playlist {}", playlist_id),
-                            Err(e) => log::error!("[Like] Failed to unlike playlist {}: {}", playlist_id, e),
-                        }
-                    });
-                });
+        let result = crate::services::toggle_like(
+            crate::services::LikeTarget::Playlist(playlist_id),
+            &mut self.content.liked_playlist_ids,
+            self.content.app_state.get_token(),
+        );
+
+        // Show appropriate toast based on result
+        if let Some(_token) = self.content.app_state.get_token() {
+            if result.is_liked {
+                self.ui.toast_manager.show_success(&result.success_message);
             } else {
-                log::warn!("[Like] No token available for unlike playlist");
-                self.toast_manager.show_error("Not authenticated");
+                self.ui.toast_manager.show_info(&result.success_message);
             }
         } else {
-            // Like the playlist
-            log::info!("[Like] Liking playlist {}", playlist_id);
-            self.liked_playlist_ids.insert(playlist_id);
-            
-            // Show optimistic toast
-            self.toast_manager.show_success("Added to Liked playlists");
-            
-            // Spawn background task to like via API
-            if let Some(token) = self.app_state.get_token() {
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        match crate::api::likes::like_playlist(&token, playlist_id).await {
-                            Ok(_) => log::info!("[Like] Successfully liked playlist {}", playlist_id),
-                            Err(e) => log::error!("[Like] Failed to like playlist {}: {}", playlist_id, e),
-                        }
-                    });
-                });
-            } else {
-                log::warn!("[Like] No token available for like playlist");
-                self.toast_manager.show_error("Not authenticated");
-            }
+            self.ui.toast_manager.show_error(&result.error_message);
         }
     }
     
@@ -924,12 +564,12 @@ impl MusicPlayerApp {
         ctx.input(|i| {
             // Ctrl+Space: Play/Pause
             if i.modifiers.ctrl && i.key_pressed(egui::Key::Space) {
-                if self.is_playing {
-                    self.audio_controller.pause();
-                    self.is_playing = false;
-                } else if self.current_track_id.is_some() {
-                    self.audio_controller.resume();
-                    self.is_playing = true;
+                if self.audio.is_playing {
+                    self.audio.audio_controller.pause();
+                    self.audio.is_playing = false;
+                } else if self.audio.current_track_id.is_some() {
+                    self.audio.audio_controller.resume();
+                    self.audio.is_playing = true;
                 }
             }
             
@@ -940,85 +580,85 @@ impl MusicPlayerApp {
             
             // Ctrl+Shift+S: Toggle shuffle (Ctrl+S is Suggestions navigation)
             if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::S) {
-                self.shuffle_mode = !self.shuffle_mode;
-                self.playback_queue.set_shuffle(self.shuffle_mode);
+                self.audio.shuffle_mode = !self.audio.shuffle_mode;
+                self.audio.playback_queue.set_shuffle(self.audio.shuffle_mode);
                 self.save_playback_config();
-                let msg = if self.shuffle_mode { "Shuffle on" } else { "Shuffle off" };
-                self.toast_manager.show_info(msg);
+                let msg = if self.audio.shuffle_mode { "Shuffle on" } else { "Shuffle off" };
+                self.ui.toast_manager.show_info(msg);
             }
             
             // Ctrl+Shift+R: Cycle repeat mode (Ctrl+R is Search Results navigation)
             if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::R) {
                 use crate::app_state::RepeatMode;
-                self.repeat_mode = match self.repeat_mode {
+                self.audio.repeat_mode = match self.audio.repeat_mode {
                     RepeatMode::None => RepeatMode::All,
                     RepeatMode::All => RepeatMode::One,
                     RepeatMode::One => RepeatMode::None,
                 };
                 self.save_playback_config();
-                let msg = match self.repeat_mode {
+                let msg = match self.audio.repeat_mode {
                     RepeatMode::None => "Repeat off",
                     RepeatMode::All => "Repeat all",
                     RepeatMode::One => "Repeat one",
                 };
-                self.toast_manager.show_info(msg);
+                self.ui.toast_manager.show_info(msg);
             }
             
             // Ctrl+Arrow Up: Volume up
             if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowUp) {
-                let new_volume = (self.volume + 0.1).min(1.0);
-                self.volume = new_volume;
-                self.audio_controller.set_volume(new_volume);
-                if self.muted {
-                    self.muted = false;
-                    self.audio_controller.set_volume(new_volume);
+                let new_volume = (self.audio.volume + 0.1).min(1.0);
+                self.audio.volume = new_volume;
+                self.audio.audio_controller.set_volume(new_volume);
+                if self.audio.muted {
+                    self.audio.muted = false;
+                    self.audio.audio_controller.set_volume(new_volume);
                 }
             }
             
             // Ctrl+Arrow Down: Volume down
             if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowDown) {
-                let new_volume = (self.volume - 0.1).max(0.0);
-                self.volume = new_volume;
-                self.audio_controller.set_volume(new_volume);
+                let new_volume = (self.audio.volume - 0.1).max(0.0);
+                self.audio.volume = new_volume;
+                self.audio.audio_controller.set_volume(new_volume);
             }
             
             // Ctrl+Arrow Right: Seek forward 10s
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowRight) && self.current_track_id.is_some() {
-                let current_pos = self.audio_controller.get_position();
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowRight) && self.audio.current_track_id.is_some() {
+                let current_pos = self.audio.audio_controller.get_position();
                 let new_pos = current_pos + Duration::from_secs(10);
-                if new_pos < Duration::from_millis(self.current_duration_ms) {
-                    self.seek_target_pos = Some(new_pos);
+                if new_pos < Duration::from_millis(self.audio.current_duration_ms) {
+                    self.ui.seek_target_pos = Some(new_pos);
                 }
             }
             
             // Ctrl+Arrow Left: Seek backward 10s
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowLeft) && self.current_track_id.is_some() {
-                let current_pos = self.audio_controller.get_position();
+            if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowLeft) && self.audio.current_track_id.is_some() {
+                let current_pos = self.audio.audio_controller.get_position();
                 let new_pos = current_pos.saturating_sub(Duration::from_secs(10));
-                self.seek_target_pos = Some(new_pos);
+                self.ui.seek_target_pos = Some(new_pos);
             }
         });
     }
 
     /// Share current track (copy URL to clipboard)
     pub fn share_current_track(&mut self) {
-        let success = crate::utils::clipboard::share_track_url(self.current_permalink_url.as_deref());
+        let success = crate::utils::clipboard::share_track_url(self.audio.current_permalink_url.as_deref());
         
         if success {
-            self.toast_manager.show_success("Track URL copied to clipboard!");
+            self.ui.toast_manager.show_success("Track URL copied to clipboard!");
         } else {
-            self.toast_manager.show_error("Failed to copy URL - no track playing");
+            self.ui.toast_manager.show_error("Failed to copy URL - no track playing");
         }
     }
 
     /// Fetch user info (avatar and username) from /me endpoint
     pub fn fetch_user_info(&mut self) {
-        if self.user_avatar_rx.is_some() {
+        if self.tasks.user_avatar_rx.is_some() {
             return; // Already fetching
         }
 
         // Use token helper to ensure fresh token
-        let oauth = match &self.oauth_manager {
+        let oauth = match &self.auth.oauth_manager {
             Some(o) => o.clone(),
             None => return,
         };
@@ -1032,10 +672,16 @@ impl MusicPlayerApp {
         };
 
         let (tx, rx) = channel();
-        self.user_avatar_rx = Some(rx);
+        self.tasks.user_avatar_rx = Some(rx);
 
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = match crate::utils::error_handling::create_runtime() {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("[PlayerApp] {}", e);
+                    return;
+                }
+            };
             rt.block_on(async {
                 let client = crate::utils::http::client();
                 
@@ -1086,33 +732,33 @@ impl MusicPlayerApp {
 
     /// Check for user avatar updates
     pub fn check_user_avatar(&mut self, ctx: &egui::Context) {
-        if let Some(rx) = &self.user_avatar_rx {
+        if let Some(rx) = &self.tasks.user_avatar_rx {
             if let Ok(color_image) = rx.try_recv() {
-                self.user_avatar_texture = Some(ctx.load_texture(
+                self.auth.user_avatar_texture = Some(ctx.load_texture(
                     "user_avatar",
                     color_image,
                     egui::TextureOptions::LINEAR
                 ));
-                self.user_avatar_rx = None;
+                self.tasks.user_avatar_rx = None;
             }
         }
     }
     
     /// Check for playlist chunk updates (progressive loading)
     pub fn check_playlist_chunks(&mut self) {
-        if let Some(rx) = &self.playlist_chunk_rx {
+        if let Some(rx) = &self.tasks.playlist_chunk_rx {
             if let Ok(chunk_tracks) = rx.try_recv() {
                 if chunk_tracks.is_empty() {
                     // Empty chunk signals completion
                     log::info!("[App] Playlist loading complete");
-                    self.playlist_chunk_rx = None;
-                    self.playlist_loading_id = None;
+                    self.tasks.playlist_chunk_rx = None;
+                    self.content.playlist_loading_id = None;
                 } else {
                     let chunk_size = chunk_tracks.len();
                     log::info!("[App] Received chunk with {} tracks", chunk_size);
                     
                     // Check if queue was empty (first chunk for new playlist)
-                    let is_first_chunk = self.playback_queue.original_tracks.is_empty();
+                    let is_first_chunk = self.audio.playback_queue.original_tracks.is_empty();
                     
                     // Filter out non-playable tracks (geo-blocked, preview-only, non-streamable)
                     // Note: Database tracks (streamable but no stream_url) are kept and fetched on-demand
@@ -1152,14 +798,14 @@ impl MusicPlayerApp {
                         }
                         
                         // Append tracks to existing queue
-                        self.playback_queue.append_tracks(playable_tracks.clone());
+                        self.audio.playback_queue.append_tracks(playable_tracks.clone());
                         log::info!("[App] Added {} tracks to queue (total: {})", 
                                    filtered_count, 
-                                   self.playback_queue.original_tracks.len());
+                                   self.audio.playback_queue.original_tracks.len());
                         
                         // If this was the first chunk, start playback
                         if is_first_chunk {
-                            if let Some(first_track) = self.playback_queue.current_track() {
+                            if let Some(first_track) = self.audio.playback_queue.current_track() {
                                 let track_id = first_track.id;
                                 log::info!("[App] Starting playback with first chunk");
                                 self.play_track(track_id);
@@ -1173,67 +819,45 @@ impl MusicPlayerApp {
 
     /// Logout user
     pub fn logout(&mut self) {
-        // Clear token
-        self.app_state.clear_token();
-        
-        // Clear queue and playback state
-        self.playback_queue = PlaybackQueue::new();
-        self.current_track_id = None;
-        self.current_title = String::new();
-        self.current_artist = String::new();
-        self.current_genre = None;
-        self.current_duration_ms = 0;
-        self.current_stream_url = None;
-        self.track_start_time = None;
-        
-        // Clear user info
-        self.user_avatar_texture = None;
-        self.user_avatar_url = None;
-        self.user_username = None;
-        
-        // Clear search results
-        self.search_query.clear();
-        self.search_results_tracks.clear();
-        self.search_results_playlists.clear();
-        self.search_loading = false;
-        
-        // Clear artwork cache
-        self.artwork_texture = None;
-        self.artwork_loading = false;
-        self.thumb_cache.clear();
-        self.thumb_pending.clear();
-        
-        // Stop playback
-        self.audio_controller.stop();
-        self.is_playing = false;
-        
-        // Reset tab to Home
-        self.selected_tab = MainTab::Home;
-        
+        // Stop playback first
+        self.audio.audio_controller.stop();
+
+        // Use state module helper methods for cleanup
+        self.auth.clear_session();
+        self.content.reset_all_content();
+        self.audio.reset_track();
+
+        // Clear UI state
+        self.ui.selected_tab = MainTab::Home;
+        self.ui.screen = AppScreen::Splash;
+        self.ui.artwork_texture = None;
+        self.ui.artwork_loading = false;
+        self.ui.thumb_cache.clear();
+        self.ui.thumb_pending.clear();
+
+        // Clear background tasks
+        self.tasks.clear_all();
+
+        // Clear token from app_state
+        self.content.app_state.clear_token();
+
         // Shader manager retains shaders across logout - no need to reinitialize
-        
-        // Reset authentication state flags
-        self.token_check_done = false;
-        self.is_authenticating = false;
-        
-        // Return to splash screen for re-login
-        self.screen = AppScreen::Splash;
     }
 
     /// Check if track finished and handle auto-play
     pub fn check_track_finished(&mut self) {
         // Only check for track completion if we're currently playing (not paused)
         // This prevents false positives when sink is empty due to pause state
-        if self.is_playing && self.audio_controller.is_finished() {
+        if self.audio.is_playing && self.audio.audio_controller.is_finished() {
             // Additional check: ensure we have a valid track and it's actually started
             // track_start_time is set after audio successfully loads, so this prevents
             // false positives during the loading phase
-            if self.current_track_id.is_none() || self.track_start_time.is_none() {
+            if self.audio.current_track_id.is_none() || self.audio.track_start_time.is_none() {
                 return;
             }
             
             // Prevent race condition: don't treat as finished if track just started (< 1 second ago)
-            if let Some(start_time) = self.track_start_time {
+            if let Some(start_time) = self.audio.track_start_time {
                 if start_time.elapsed() < Duration::from_secs(1) {
                     return;
                 }
@@ -1241,25 +865,25 @@ impl MusicPlayerApp {
             
             log::info!("Track finished, handling auto-play/stop");
             
-            match self.repeat_mode {
+            match self.audio.repeat_mode {
                 RepeatMode::One => {
                     // Replay current track
-                    if let Some(track_id) = self.current_track_id {
+                    if let Some(track_id) = self.audio.current_track_id {
                         info!("Repeat One: replaying track {}", track_id);
                         self.play_track(track_id);
                     }
                 }
                 RepeatMode::All => {
                     // Check if we're at the end of the queue
-                    let at_end = self.playback_queue.current_index
-                        .map(|idx| idx >= self.playback_queue.current_queue.len() - 1)
+                    let at_end = self.audio.playback_queue.current_index
+                        .map(|idx| idx >= self.audio.playback_queue.current_queue.len() - 1)
                         .unwrap_or(true);
                     
                     if at_end {
                         // Loop back to first track
                         info!("Repeat All: looping back to first track");
-                        if let Some(first_track) = self.playback_queue.original_tracks.first() {
-                            self.playback_queue.current_index = Some(0);
+                        if let Some(first_track) = self.audio.playback_queue.original_tracks.first() {
+                            self.audio.playback_queue.current_index = Some(0);
                             self.play_track(first_track.id);
                         }
                     } else {
@@ -1268,26 +892,26 @@ impl MusicPlayerApp {
                 }
                 RepeatMode::None => {
                     // Just play next, stop if at end
-                    let can_play_next = self.playback_queue.current_index
-                        .map(|idx| idx < self.playback_queue.current_queue.len() - 1)
+                    let can_play_next = self.audio.playback_queue.current_index
+                        .map(|idx| idx < self.audio.playback_queue.current_queue.len() - 1)
                         .unwrap_or(false);
                     
                     if can_play_next {
                         self.play_next();
                     } else {
                         // Check if this was single-track playback
-                        let is_single_track = self.playback_queue.current_queue.len() == 1;
+                        let is_single_track = self.audio.playback_queue.current_queue.len() == 1;
                         
                         if is_single_track {
                             // CRITICAL: Don't trigger fetch if one is already in progress
-                            if self.track_fetch_rx.is_some() {
+                            if self.tasks.track_fetch_rx.is_some() {
                                 return; // Already fetching next track, wait for it
                             }
                             
                             // Try to play random track from history (excluding current track)
                             info!("Single track finished, picking random track from history");
                             
-                            if let Some(current_id) = self.current_track_id {
+                            if let Some(current_id) = self.audio.current_track_id {
                                 match crate::utils::playback_history::PlaybackHistoryDB::new() {
                                     Ok(db) => {
                                         // Fetch recent tracks (we'll filter out current one)
@@ -1314,13 +938,13 @@ impl MusicPlayerApp {
                                             // Not enough history, try suggestions instead
                                             info!("Not enough history (< 2 tracks), falling back to suggestions");
                                             
-                                            if !self.suggestions_tracks.is_empty() {
+                                            if !self.content.suggestions_tracks.is_empty() {
                                                 // Play first suggestion
-                                                let next_track = self.suggestions_tracks[0].clone();
+                                                let next_track = self.content.suggestions_tracks[0].clone();
                                                 info!("Playing first suggestion: {}", next_track.title);
                                                 
-                                                self.playback_queue.load_tracks(vec![next_track]);
-                                                if let Some(track) = self.playback_queue.current_track() {
+                                                self.audio.playback_queue.load_tracks(vec![next_track]);
+                                                if let Some(track) = self.audio.playback_queue.current_track() {
                                                     self.play_track(track.id);
                                                 }
                                                 return; // Don't stop playback
@@ -1338,11 +962,11 @@ impl MusicPlayerApp {
                         
                         // Default: stop playback
                         info!("End of playlist, stopping playback");
-                        self.is_playing = false;
-                        self.audio_controller.stop();
-                        self.last_playback_error = None;
+                        self.audio.is_playing = false;
+                        self.audio.audio_controller.stop();
+                        self.ui.last_playback_error = None;
                         // Reset progress to allow new track selection
-                        self.track_start_time = None;
+                        self.audio.track_start_time = None;
                     }
                 }
             }
@@ -1351,19 +975,19 @@ impl MusicPlayerApp {
 
     /// Check for search results from background tasks
     pub fn check_search_results(&mut self, ctx: &egui::Context) {
-        if let Some(rx) = &self.search_rx {
+        if let Some(rx) = &self.tasks.search_rx {
             if let Ok(results) = rx.try_recv() {
-                self.search_loading = false;
+                self.content.search_loading = false;
 
                 // Replace old page with new page
-                self.search_results_tracks = results.tracks;
-                self.search_results_playlists = results.playlists;
+                self.content.search_results_tracks = results.tracks;
+                self.content.search_results_playlists = results.playlists;
 
-                self.search_next_href = results.next_href.clone();
-                self.search_has_more = results.next_href.is_some();
+                self.content.search_next_href = results.next_href.clone();
+                self.content.search_has_more = results.next_href.is_some();
 
                 // Consumed the message, receiver is done
-                self.search_rx = None;
+                self.tasks.search_rx = None;
 
                 ctx.request_repaint();
             }
@@ -1372,14 +996,14 @@ impl MusicPlayerApp {
 
     /// Check for playlist load completion from background tasks
     pub fn check_playlist_load(&mut self, ctx: &egui::Context) {
-        if let Some(rx) = &self.playlist_rx {
+        if let Some(rx) = &self.tasks.playlist_rx {
             if let Ok(playlist) = rx.try_recv() {
                 log::info!(
                     "[Playlist] Background load complete: {} total tracks",
                     playlist.tracks.len()
                 );
 
-                self.selected_playlist_id = Some(playlist.id);
+                self.content.selected_playlist_id = Some(playlist.id);
 
                 let streamable_tracks: Vec<_> = playlist
                     .tracks
@@ -1392,10 +1016,10 @@ impl MusicPlayerApp {
                     log::info!("[Playlist] Loading {} tracks into queue", streamable_tracks.len());
                     
                     // Load playlist into queue (this replaces existing queue)
-                    self.playback_queue.load_tracks(streamable_tracks);
+                    self.audio.playback_queue.load_tracks(streamable_tracks);
 
                     // Start playing first track
-                    if let Some(track) = self.playback_queue.current_track() {
+                    if let Some(track) = self.audio.playback_queue.current_track() {
                         log::info!("[Playlist] Playing first track: {}", track.title);
                         self.play_track(track.id);
                     }
@@ -1403,7 +1027,7 @@ impl MusicPlayerApp {
                     ctx.request_repaint();
                 }
 
-                self.playlist_rx = None;
+                self.tasks.playlist_rx = None;
             }
         }
     }
@@ -1411,17 +1035,17 @@ impl MusicPlayerApp {
     /// Check for home screen data updates from background tasks
     pub fn check_home_updates(&mut self) {
         // Check recently played
-        if let Some(rx) = &self.home_recently_played_rx {
+        if let Some(rx) = &self.tasks.home_recently_played_rx {
             if let Ok(tracks) = rx.try_recv() {
                 let track_count = tracks.len();
                 log::info!("[Home] Received {} recently played tracks", track_count);
-                self.home_content.recently_played = tracks.clone();
-                self.home_content.initial_fetch_done = true;
-                self.home_loading = false;
-                self.home_recently_played_rx = None;
+                self.content.home_content.recently_played = tracks.clone();
+                self.content.home_content.initial_fetch_done = true;
+                self.content.home_loading = false;
+                self.tasks.home_recently_played_rx = None;
                 
                 // Only fetch recommendations if we have history to base them on
-                if !tracks.is_empty() && !self.home_recommendations_loading {
+                if !tracks.is_empty() && !self.content.home_recommendations_loading {
                     // Fetch 6 recommendations based on recently played
                     self.fetch_recommendations(tracks, 6);
                 }
@@ -1429,7 +1053,7 @@ impl MusicPlayerApp {
         }
         
         // Check recommendations
-        if let Some(rx) = &self.home_recommendations_rx {
+        if let Some(rx) = &self.tasks.home_recommendations_rx {
             if let Ok(mut tracks) = rx.try_recv() {
                 log::info!("[Home] Received {} recommended tracks", tracks.len());
                 
@@ -1440,7 +1064,7 @@ impl MusicPlayerApp {
                     
                     // Get history tracks that aren't already in recommendations
                     let rec_ids: std::collections::HashSet<u64> = tracks.iter().map(|t| t.id).collect();
-                    let history_tracks: Vec<_> = self.home_content.recently_played.iter()
+                    let history_tracks: Vec<_> = self.content.home_content.recently_played.iter()
                         .filter(|t| !rec_ids.contains(&t.id))
                         .take(needed)
                         .cloned()
@@ -1450,14 +1074,14 @@ impl MusicPlayerApp {
                 }
                 
                 // Store recommendations (max 6)
-                self.home_content.recommendations = tracks.into_iter().take(6).collect();
-                self.home_recommendations_loading = false;
-                self.home_recommendations_rx = None;
+                self.content.home_content.recommendations = tracks.into_iter().take(6).collect();
+                self.content.home_recommendations_loading = false;
+                self.tasks.home_recommendations_rx = None;
             }
         }
         
         // Check suggestions
-        if let Some(rx) = &self.suggestions_rx {
+        if let Some(rx) = &self.tasks.suggestions_rx {
             if let Ok(mut tracks) = rx.try_recv() {
                 log::info!("[Suggestions] Received {} suggestion tracks", tracks.len());
                 
@@ -1468,7 +1092,7 @@ impl MusicPlayerApp {
                     
                     // Get history tracks that aren't already in suggestions
                     let sug_ids: std::collections::HashSet<u64> = tracks.iter().map(|t| t.id).collect();
-                    let history_records = self.playback_history.get_recent_tracks(needed + 10);
+                    let history_records = self.content.playback_history.get_recent_tracks(needed + 10);
                     let history_tracks: Vec<_> = history_records.iter()
                         .filter(|r| !sug_ids.contains(&r.track_id))
                         .take(needed)
@@ -1496,28 +1120,28 @@ impl MusicPlayerApp {
                 }
                 
                 // Store all suggestions for pagination
-                self.suggestions_tracks = tracks;
-                self.suggestions_loading = false;
-                self.suggestions_rx = None;
-                self.suggestions_initial_fetch_done = true;
+                self.content.suggestions_tracks = tracks;
+                self.content.suggestions_loading = false;
+                self.tasks.suggestions_rx = None;
+                self.content.suggestions_initial_fetch_done = true;
             }
         }
     }
     
     /// Fetch home screen data (recently played from local database)
     pub fn fetch_home_data(&mut self) {
-        if self.home_loading {
+        if self.content.home_loading {
             return; // Already loading
         }
         
         log::info!("[Home] Fetching recently played tracks from local database (ordered by played_at DESC)...");
-        self.home_loading = true;
+        self.content.home_loading = true;
         
         let (tx, rx) = channel();
-        self.home_recently_played_rx = Some(rx);
+        self.tasks.home_recently_played_rx = Some(rx);
         
         // Fetch directly from database - no queue needed
-        let token = self.oauth_manager.as_ref()
+        let token = self.auth.oauth_manager.as_ref()
             .and_then(|oauth| crate::utils::token_helper::get_valid_token_sync(oauth))
             .map(|t| t.access_token.clone())
             .unwrap_or_default();
@@ -1529,18 +1153,18 @@ impl MusicPlayerApp {
         log::info!("[Home] Refreshing recently played and recommendations after track change...");
         
         // First, get the current track from queue to use for recommendations
-        let current_track = self.playback_queue.current_track().cloned();
+        let current_track = self.audio.playback_queue.current_track().cloned();
         
         if let Some(track) = current_track {
             // Immediately fetch recommendations based on newly playing track
-            if let Some(oauth) = &self.oauth_manager {
+            if let Some(oauth) = &self.auth.oauth_manager {
                 if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
-                    if !self.home_recommendations_loading {
+                    if !self.content.home_recommendations_loading {
                         log::info!("[Home] Fetching recommendations for newly playing track...");
-                        self.home_recommendations_loading = true;
+                        self.content.home_recommendations_loading = true;
                         
                         let (rec_tx, rec_rx) = channel();
-                        self.home_recommendations_rx = Some(rec_rx);
+                        self.tasks.home_recommendations_rx = Some(rec_rx);
                         
                         // Fetch recommendations immediately
                         crate::app::home::fetch_recommendations_async(
@@ -1556,10 +1180,10 @@ impl MusicPlayerApp {
         
         // Then refresh recently played list from database (ordered by played_at DESC)
         let (tx, rx) = channel();
-        self.home_recently_played_rx = Some(rx);
+        self.tasks.home_recently_played_rx = Some(rx);
         
         // Fetch directly from database - no queue needed
-        let token = self.oauth_manager.as_ref()
+        let token = self.auth.oauth_manager.as_ref()
             .and_then(|oauth| crate::utils::token_helper::get_valid_token_sync(oauth))
             .map(|t| t.access_token.clone())
             .unwrap_or_default();
@@ -1568,17 +1192,17 @@ impl MusicPlayerApp {
     
     /// Fetch recommendations based on recently played tracks
     fn fetch_recommendations(&mut self, recently_played: Vec<crate::app::playlists::Track>, limit: usize) {
-        if self.home_recommendations_loading {
+        if self.content.home_recommendations_loading {
             return;
         }
         
-        if let Some(oauth) = &self.oauth_manager {
+        if let Some(oauth) = &self.auth.oauth_manager {
             if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
                 log::info!("[Home] Fetching {} recommendations...", limit);
-                self.home_recommendations_loading = true;
+                self.content.home_recommendations_loading = true;
                 
                 let (tx, rx) = channel();
-                self.home_recommendations_rx = Some(rx);
+                self.tasks.home_recommendations_rx = Some(rx);
                 
                 crate::app::home::fetch_recommendations_async(
                     token_data.access_token,
@@ -1592,77 +1216,160 @@ impl MusicPlayerApp {
 
     /// Fetch all suggestions for the Suggestions screen (up to 100 tracks)
     pub fn fetch_all_suggestions(&mut self) {
-        if self.suggestions_loading {
+        if self.content.suggestions_loading {
             return;
         }
-        
-        // Get recently played tracks to base suggestions on
-        let recent_tracks = self.playback_history.get_recent_tracks(50);
-        if recent_tracks.is_empty() {
-            log::info!("[Suggestions] No playback history, skipping suggestions fetch");
-            self.suggestions_initial_fetch_done = true;
-            return;
-        }
-        
-        // Convert to Track objects (simple version, we just need IDs)
-        let tracks: Vec<crate::app::playlists::Track> = recent_tracks.iter().map(|record| {
-            crate::app::playlists::Track {
-                id: record.track_id,
-                title: record.title.clone(),
-                user: crate::app::playlists::User {
-                    id: 0,
-                    username: record.artist.clone(),
-                    avatar_url: None,
-                },
-                duration: record.duration,
-                genre: record.genre.clone(),
-                artwork_url: None,
-                permalink_url: None,
-                stream_url: None,
-                streamable: Some(true),
-                playback_count: None,
-                access: None,
-                policy: None,
-            }
-        }).collect();
-        
-        if let Some(oauth) = &self.oauth_manager {
+
+        if let Some(oauth) = &self.auth.oauth_manager {
             if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
-                log::info!("[Suggestions] Fetching 12 suggestions based on {} recent tracks...", tracks.len());
-                self.suggestions_loading = true;
-                
+                log::info!("[Suggestions] Fetching suggestions from multiple sources...");
+                self.content.suggestions_loading = true;
+
+                let token = token_data.access_token.clone();
                 let (tx, rx) = channel();
-                self.suggestions_rx = Some(rx);
-                
-                crate::app::home::fetch_recommendations_async(
-                    token_data.access_token,
-                    tracks,
-                    tx,
-                    12  // Fetch 12 suggestions to match page size
-                );
+                self.tasks.suggestions_rx = Some(rx);
+
+                // Get history tracks for recommendations API
+                let recent_tracks = self.content.playback_history.get_recent_tracks(50);
+                let history_tracks_for_api: Vec<crate::app::playlists::Track> = recent_tracks.iter().map(|record| {
+                    crate::app::playlists::Track {
+                        id: record.track_id,
+                        title: record.title.clone(),
+                        user: crate::app::playlists::User {
+                            id: 0,
+                            username: record.artist.clone(),
+                            avatar_url: None,
+                        },
+                        duration: record.duration,
+                        genre: record.genre.clone(),
+                        artwork_url: None,
+                        permalink_url: None,
+                        stream_url: None,
+                        streamable: Some(true),
+                        playback_count: None,
+                        access: None,
+                        policy: None,
+                    }
+                }).collect();
+
+                // Clone current likes for merging
+                let likes_tracks = self.content.likes_tracks.clone();
+                let user_tracks = self.content.user_tracks.clone();
+
+                // Get history records upfront (can't clone PlaybackHistoryDB)
+                let history_records = self.content.playback_history.get_recent_tracks(50);
+
+                std::thread::spawn(move || {
+                    let rt = match crate::utils::error_handling::create_runtime() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("[Suggestions] {}", e);
+                            return;
+                        }
+                    };
+                    rt.block_on(async {
+                        let mut all_suggestions = Vec::new();
+                        let mut seen_ids = std::collections::HashSet::new();
+
+                        // Source 1: Recommended API (primary - fetch related tracks based on recent history)
+                        if !history_tracks_for_api.is_empty() {
+                            log::info!("[Suggestions] Fetching from Recommended API based on recent history...");
+                            if let Some(recent_track) = history_tracks_for_api.first() {
+                                let track_urn = format!("soundcloud:tracks:{}", recent_track.id);
+                                log::info!("[Suggestions] Using track '{}' for related tracks", recent_track.title);
+
+                                match crate::api::tracks::fetch_related_tracks(&token, &track_urn, 40).await {
+                                    Ok(mut recommended) => {
+                                        log::info!("[Suggestions] Got {} tracks from Recommended API", recommended.len());
+                                        // Add all related tracks
+                                        for track in recommended.drain(..) {
+                                            if seen_ids.insert(track.id) {
+                                                all_suggestions.push(track);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::warn!("[Suggestions] Recommended API failed: {}", e);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Source 2: Liked tracks (secondary - add some variety)
+                        log::info!("[Suggestions] Adding from {} liked tracks...", likes_tracks.len());
+                        for track in likes_tracks.iter().take(30) {
+                            if seen_ids.insert(track.id) {
+                                all_suggestions.push(track.clone());
+                            }
+                        }
+
+                        // Source 3: User uploaded tracks
+                        log::info!("[Suggestions] Adding from {} user tracks...", user_tracks.len());
+                        for track in user_tracks.iter().take(20) {
+                            if seen_ids.insert(track.id) {
+                                all_suggestions.push(track.clone());
+                            }
+                        }
+
+                        // Source 4: Recent history (tertiary - fill remaining)
+                        log::info!("[Suggestions] Adding from playback history...");
+                        for record in history_records.iter().take(20) {
+                            if seen_ids.insert(record.track_id) {
+                                let track = crate::app::playlists::Track {
+                                    id: record.track_id,
+                                    title: record.title.clone(),
+                                    user: crate::app::playlists::User {
+                                        id: 0,
+                                        username: record.artist.clone(),
+                                        avatar_url: None,
+                                    },
+                                    duration: record.duration,
+                                    genre: record.genre.clone(),
+                                    artwork_url: None,
+                                    permalink_url: None,
+                                    stream_url: None,
+                                    streamable: Some(true),
+                                    playback_count: None,
+                                    access: None,
+                                    policy: None,
+                                };
+                                all_suggestions.push(track);
+                            }
+                        }
+
+                        log::info!("[Suggestions] Combined {} unique tracks from all sources", all_suggestions.len());
+                        let _ = tx.send(all_suggestions);
+                    });
+                });
             }
         }
     }
 
     /// Fetch user's liked tracks and uploaded tracks
     pub fn fetch_likes(&mut self) {
-        if self.likes_loading {
+        if self.content.likes_loading {
             return;
         }
         
-        if let Some(oauth) = &self.oauth_manager {
+        if let Some(oauth) = &self.auth.oauth_manager {
             if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
                 log::info!("[Likes] Fetching liked tracks and user tracks...");
-                self.likes_loading = true;
+                self.content.likes_loading = true;
                 
                 let token = token_data.access_token.clone();
                 
                 // Fetch liked tracks
                 let (tracks_tx, tracks_rx) = channel();
-                self.likes_tracks_rx = Some(tracks_rx);
+                self.tasks.likes_tracks_rx = Some(tracks_rx);
                 
                 std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let rt = match crate::utils::error_handling::create_runtime() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("[PlayerApp] {}", e);
+                            return;
+                        }
+                    };
                     rt.block_on(async {
                         match crate::api::likes::fetch_user_liked_tracks(&token).await {
                             Ok(tracks) => {
@@ -1679,10 +1386,16 @@ impl MusicPlayerApp {
                 // Fetch user's uploaded tracks
                 let token_user = token_data.access_token.clone();
                 let (user_tx, user_rx) = channel();
-                self.user_tracks_rx = Some(user_rx);
+                self.tasks.user_tracks_rx = Some(user_rx);
                 
                 std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let rt = match crate::utils::error_handling::create_runtime() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("[PlayerApp] {}", e);
+                            return;
+                        }
+                    };
                     rt.block_on(async {
                         match crate::api::likes::fetch_user_tracks(&token_user).await {
                             Ok(tracks) => {
@@ -1702,16 +1415,22 @@ impl MusicPlayerApp {
     /// Fetch liked track IDs only (lightweight, for startup)
     /// This populates liked_track_ids HashSet without loading full track data
     pub fn fetch_liked_track_ids_only(&mut self) {
-        if let Some(oauth) = &self.oauth_manager {
+        if let Some(oauth) = &self.auth.oauth_manager {
             if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
                 log::info!("[Likes] Fetching liked track IDs for social buttons...");
                 
                 let token = token_data.access_token.clone();
                 let (tx, rx) = channel();
-                self.likes_tracks_rx = Some(rx);
+                self.tasks.likes_tracks_rx = Some(rx);
                 
                 std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let rt = match crate::utils::error_handling::create_runtime() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("[PlayerApp] {}", e);
+                            return;
+                        }
+                    };
                     rt.block_on(async {
                         match crate::api::likes::fetch_user_liked_tracks(&token).await {
                             Ok(tracks) => {
@@ -1730,21 +1449,27 @@ impl MusicPlayerApp {
     
     /// Fetch user's playlists
     pub fn fetch_playlists(&mut self) {
-        if self.playlists_loading {
+        if self.content.playlists_loading {
             return;
         }
         
-        if let Some(oauth) = &self.oauth_manager {
+        if let Some(oauth) = &self.auth.oauth_manager {
             if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
                 log::info!("[Playlists] Fetching user playlists...");
-                self.playlists_loading = true;
+                self.content.playlists_loading = true;
                 
                 let token = token_data.access_token.clone();
                 let (playlists_tx, playlists_rx): (_, Receiver<(Vec<_>, Vec<u64>)>) = channel();
-                self.playlists_rx = Some(playlists_rx);
+                self.tasks.playlists_rx = Some(playlists_rx);
                 
                 std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let rt = match crate::utils::error_handling::create_runtime() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("[PlayerApp] {}", e);
+                            return;
+                        }
+                    };
                     rt.block_on(async {
                         match crate::api::likes::fetch_user_playlists(&token).await {
                             Ok((playlists, created_ids)) => {
@@ -1766,30 +1491,30 @@ impl MusicPlayerApp {
         let mut pending = 0;
         
         // Check liked tracks
-        if let Some(rx) = &self.likes_tracks_rx {
+        if let Some(rx) = &self.tasks.likes_tracks_rx {
             if let Ok(tracks) = rx.try_recv() {
                 log::info!("[Likes] Received {} liked tracks", tracks.len());
                 
                 // Update liked track IDs HashSet
-                self.liked_track_ids.clear();
+                self.content.liked_track_ids.clear();
                 for track in &tracks {
-                    self.liked_track_ids.insert(track.id);
+                    self.content.liked_track_ids.insert(track.id);
                 }
-                log::info!("[Likes] Updated liked_track_ids with {} IDs", self.liked_track_ids.len());
+                log::info!("[Likes] Updated liked_track_ids with {} IDs", self.content.liked_track_ids.len());
                 
-                self.likes_tracks = tracks;
-                self.likes_tracks_rx = None;
+                self.content.likes_tracks = tracks;
+                self.tasks.likes_tracks_rx = None;
             } else {
                 pending += 1;
             }
         }
         
         // Check user uploaded tracks
-        if let Some(rx) = &self.user_tracks_rx {
+        if let Some(rx) = &self.tasks.user_tracks_rx {
             if let Ok(tracks) = rx.try_recv() {
                 log::info!("[Likes] Received {} user uploaded tracks", tracks.len());
-                self.user_tracks = tracks;
-                self.user_tracks_rx = None;
+                self.content.user_tracks = tracks;
+                self.tasks.user_tracks_rx = None;
             } else {
                 pending += 1;
             }
@@ -1797,31 +1522,43 @@ impl MusicPlayerApp {
         
         // Mark loading as complete when all channels are done
         if pending == 0 {
-            self.likes_loading = false;
+            self.content.likes_loading = false;
         }
     }
     
     /// Check for playlists updates from background tasks
     pub fn check_playlists_updates(&mut self) {
-        if let Some(rx) = &self.playlists_rx {
+        if let Some(rx) = &self.tasks.playlists_rx {
             if let Ok((playlists, created_ids)) = rx.try_recv() {
                 log::info!("[Playlists] Received {} playlists ({} created)", playlists.len(), created_ids.len());
-                
+
                 // Track user-created playlist IDs
-                self.user_created_playlist_ids.clear();
+                self.content.user_created_playlist_ids.clear();
                 for id in created_ids {
-                    self.user_created_playlist_ids.insert(id);
+                    self.content.user_created_playlist_ids.insert(id);
                 }
-                
+
                 // Build liked playlist IDs set (all playlists)
-                self.liked_playlist_ids.clear();
+                self.content.liked_playlist_ids.clear();
                 for playlist in &playlists {
-                    self.liked_playlist_ids.insert(playlist.id);
+                    self.content.liked_playlist_ids.insert(playlist.id);
                 }
-                
-                self.playlists = playlists;
-                self.playlists_rx = None;
-                self.playlists_loading = false;
+
+                self.content.playlists = playlists;
+                self.tasks.playlists_rx = None;
+                self.content.playlists_loading = false;
+            }
+        }
+    }
+
+    /// Check for suggestions updates from background tasks
+    pub fn check_suggestions_updates(&mut self) {
+        if let Some(rx) = &self.tasks.suggestions_rx {
+            if let Ok(tracks) = rx.try_recv() {
+                log::info!("[Suggestions] Received {} suggestion tracks", tracks.len());
+                self.content.suggestions_tracks = tracks;
+                self.tasks.suggestions_rx = None;
+                self.content.suggestions_loading = false;
             }
         }
     }
@@ -1832,35 +1569,41 @@ impl MusicPlayerApp {
         let now = Instant::now();
         
         // Check every 60 seconds
-        if let Some(last_check) = self.last_token_check {
-            if now.duration_since(last_check) < self.token_check_interval {
+        if let Some(last_check) = self.auth.last_token_check {
+            if now.duration_since(last_check) < self.auth.token_check_interval {
                 return; // Not time to check yet
             }
         }
         
-        self.last_token_check = Some(now);
+        self.auth.last_token_check = Some(now);
         
         // Only check if we're on the main screen (logged in)
-        if !matches!(self.screen, AppScreen::Main) {
+        if !matches!(self.ui.screen, AppScreen::Main) {
             return;
         }
         
         // Check and refresh token if needed using helper
-        if let Some(oauth) = &self.oauth_manager {
+        if let Some(oauth) = &self.auth.oauth_manager {
             // Don't do anything if refresh is already in progress
-            if self.refresh_in_progress {
+            if self.auth.refresh_in_progress {
                 log::debug!("[OAuth] Refresh already in progress, waiting...");
                 return;
             }
             
             // Mark refresh as in progress
-            self.refresh_in_progress = true;
+            self.auth.refresh_in_progress = true;
             
             let oauth_clone = oauth.clone();
             
             // Spawn refresh task in background
             std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
+                let rt = match crate::utils::error_handling::create_runtime() {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::error!("[PlayerApp] {}", e);
+                        return;
+                    }
+                };
                 rt.block_on(async {
                     let _ = crate::utils::token_helper::ensure_fresh_token(&oauth_clone).await;
                 });
@@ -1870,7 +1613,7 @@ impl MusicPlayerApp {
     
     /// Fetch track data from API and play it (for database tracks with no stream_url)
     pub fn fetch_and_play_track(&mut self, track_id: u64) {
-        if let Some(oauth) = &self.oauth_manager {
+        if let Some(oauth) = &self.auth.oauth_manager {
             if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
                 log::info!("[Home] Fetching full track data for ID: {}", track_id);
                 
@@ -1878,7 +1621,13 @@ impl MusicPlayerApp {
                 let (tx, rx) = channel();
                 
                 std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let rt = match crate::utils::error_handling::create_runtime() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("[PlayerApp] {}", e);
+                            return;
+                        }
+                    };
                     rt.block_on(async {
                         match crate::app::playlists::fetch_track_by_id(&token, track_id).await {
                             Ok(track) => {
@@ -1901,20 +1650,20 @@ impl MusicPlayerApp {
                 });
                 
                 // Store receiver for checking in update loop
-                self.track_fetch_rx = Some(rx);
+                self.tasks.track_fetch_rx = Some(rx);
             }
         }
     }
     
     /// Check for fetched track data and play when ready
     fn check_track_fetch(&mut self) {
-        if let Some(rx) = &self.track_fetch_rx {
+        if let Some(rx) = &self.tasks.track_fetch_rx {
             if let Ok(result) = rx.try_recv() {
                 match result {
                     Ok(tracks) => {
                         if !tracks.is_empty() {
                             log::info!("[Home] Track(s) fetched, loading into queue");
-                            self.playback_queue.load_tracks(tracks.clone());
+                            self.audio.playback_queue.load_tracks(tracks.clone());
                             if let Some(first_track) = tracks.first() {
                                 self.play_track(first_track.id);
                             }
@@ -1926,17 +1675,17 @@ impl MusicPlayerApp {
                     }
                     Err(e) => {
                         log::error!("[Home] Track fetch failed: {}", e);
-                        self.last_playback_error = Some(format!("Failed to load track: {}", e));
+                        self.ui.last_playback_error = Some(format!("Failed to load track: {}", e));
                     }
                 }
-                self.track_fetch_rx = None;
+                self.tasks.track_fetch_rx = None;
             }
         }
     }
     
     /// Fetch multiple tracks from API and play as playlist
     pub fn fetch_and_play_playlist(&mut self, track_ids: Vec<u64>) {
-        if let Some(oauth) = &self.oauth_manager {
+        if let Some(oauth) = &self.auth.oauth_manager {
             if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
                 log::info!("[Home] Fetching {} tracks from API...", track_ids.len());
                 
@@ -1944,7 +1693,13 @@ impl MusicPlayerApp {
                 let (tx, rx) = channel();
                 
                 std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let rt = match crate::utils::error_handling::create_runtime() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("[PlayerApp] {}", e);
+                            return;
+                        }
+                    };
                     rt.block_on(async {
                         let mut tracks = Vec::new();
                         for track_id in track_ids {
@@ -1961,7 +1716,7 @@ impl MusicPlayerApp {
                     });
                 });
                 
-                self.track_fetch_rx = Some(rx);
+                self.tasks.track_fetch_rx = Some(rx);
             }
         }
     }
@@ -1973,22 +1728,22 @@ impl eframe::App for MusicPlayerApp {
         ctx.request_repaint_after(std::time::Duration::from_micros(8333));
 
         // Check for shader hot-reload (delegated to ShaderManager)
-        self.shader_manager.check_hot_reload();
+        self.ui.shader_manager.check_hot_reload();
 
         // Handle close request - cleanup and exit immediately
         if ctx.input(|i| i.viewport().close_requested()) {
-            if !self.is_shutting_down {
-                self.is_shutting_down = true;
+            if !self.ui.is_shutting_down {
+                self.ui.is_shutting_down = true;
                 self.cleanup_and_exit(ctx, frame);
             }
         }
         // Handle OAuth authentication flow and token validation
-        if matches!(self.screen, AppScreen::Splash) {
+        if matches!(self.ui.screen, AppScreen::Splash) {
             // Check for existing valid token (only once per session)
-            if !self.token_check_done {
-                self.token_check_done = true;
+            if !self.auth.token_check_done {
+                self.auth.token_check_done = true;
                 
-                if let Some(oauth_manager) = &self.oauth_manager {
+                if let Some(oauth_manager) = &self.auth.oauth_manager {
                     // Use helper to check and refresh token if needed
                     if crate::utils::token_helper::ensure_fresh_token_sync(oauth_manager) {
                         log::info!("[OAuth] Valid token found on startup!");
@@ -2000,7 +1755,7 @@ impl eframe::App for MusicPlayerApp {
             }
             
             // Check if we have a valid token AND minimum splash time has elapsed
-            let has_valid_token = if let Some(oauth_manager) = &self.oauth_manager {
+            let has_valid_token = if let Some(oauth_manager) = &self.auth.oauth_manager {
                 oauth_manager.get_token().is_some()
             } else {
                 false
@@ -2008,9 +1763,9 @@ impl eframe::App for MusicPlayerApp {
             
             if has_valid_token {
                 // Check if minimum splash duration has elapsed
-                let can_transition = if let Some(start_time) = self.splash_start_time {
+                let can_transition = if let Some(start_time) = self.ui.splash_start_time {
                     let elapsed = start_time.elapsed();
-                    let min_duration = self.splash_min_duration;
+                    let min_duration = self.ui.splash_min_duration;
                     
                     if elapsed < min_duration {
                         // Not enough time has passed, request repaint to check again soon
@@ -2026,11 +1781,11 @@ impl eframe::App for MusicPlayerApp {
                 
                 if can_transition {
                     log::info!("[Splash] Minimum display time elapsed, transitioning to main screen");
-                    self.is_authenticating = false;
+                    self.auth.is_authenticating = false;
                     
                     // Shader manager retains shaders - they're reused efficiently
                     
-                    self.screen = AppScreen::Main;
+                    self.ui.screen = AppScreen::Main;
                     // Fetch user info (avatar, username) after login
                     self.fetch_user_info();
                     // Fetch liked track IDs for social buttons
@@ -2050,7 +1805,7 @@ impl eframe::App for MusicPlayerApp {
         ctx.set_visuals(visuals);
         
         // Handle keyboard shortcuts
-        if matches!(self.screen, AppScreen::Main) {
+        if matches!(self.ui.screen, AppScreen::Main) {
             self.handle_keyboard_shortcuts(ctx);
         }
         
@@ -2076,7 +1831,16 @@ impl eframe::App for MusicPlayerApp {
         
         // Check for home screen data updates
         self.check_home_updates();
-        
+
+        // Check for suggestions updates
+        self.check_suggestions_updates();
+
+        // Check for likes updates
+        self.check_likes_updates();
+
+        // Check for playlists updates
+        self.check_playlists_updates();
+
         // Check for fetched track data (from database tracks)
         self.check_track_fetch();
 
@@ -2084,23 +1848,21 @@ impl eframe::App for MusicPlayerApp {
         self.check_token_expiry();
 
         // Check if track finished for auto-play
-        if matches!(self.screen, AppScreen::Main) {
+        if matches!(self.ui.screen, AppScreen::Main) {
             self.check_track_finished();
         }
 
-        match self.screen {
+        match self.ui.screen {
             AppScreen::Splash => {
                 crate::screens::render_splash_screen(self, ctx);
             }
             AppScreen::Main => {
-                // AUDIO REACTIVITY: Use real FFT analysis
-                if self.is_playing {
+                // AUDIO REACTIVITY: Use real FFT analysis (lock-free!)
+                if self.audio.is_playing {
                     // Read bass energy for overall amplitude (pulsing effect)
-                    if let Ok(bass) = self.bass_energy.lock() {
-                        self.audio_amplitude = *bass;
-                    }
+                    self.ui.audio_amplitude = crate::utils::error_handling::load_f32_atomic(&self.audio.bass_energy);
                 } else {
-                    self.audio_amplitude = 0.0;
+                    self.ui.audio_amplitude = 0.0;
                 }
                 
                 crate::ui_components::layout::render_with_layout(self, ctx);
@@ -2111,15 +1873,15 @@ impl eframe::App for MusicPlayerApp {
         egui::Area::new(egui::Id::new("toast_area"))
             .anchor(egui::Align2::CENTER_BOTTOM, egui::Vec2::ZERO)
             .show(ctx, |ui| {
-                self.toast_manager.render(ui);
+                self.ui.toast_manager.render(ui);
             });
 
         // Optimized repaint: only request when playing, loading, or toasts active
-        if self.is_playing 
-            || self.search_loading 
-            || self.home_loading 
-            || !self.toast_manager.toasts.is_empty() 
-            || self.artwork_loading
+        if self.audio.is_playing 
+            || self.content.search_loading 
+            || self.content.home_loading 
+            || !self.ui.toast_manager.toasts.is_empty() 
+            || self.ui.artwork_loading
         {
             ctx.request_repaint();
         }

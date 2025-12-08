@@ -145,12 +145,12 @@ impl Source for StreamingSource {
 impl AudioPlayer {
     /// Create new player with progressive streaming - no full download!
     pub async fn new_and_play_cached(
-        url: &str, 
-        token: &str, 
+        url: &str,
+        token: &str,
         track_id: u64,
-        bass_energy: std::sync::Arc<std::sync::Mutex<f32>>,
-        mid_energy: std::sync::Arc<std::sync::Mutex<f32>>,
-        high_energy: std::sync::Arc<std::sync::Mutex<f32>>,
+        bass_energy: std::sync::Arc<std::sync::atomic::AtomicU32>,
+        mid_energy: std::sync::Arc<std::sync::atomic::AtomicU32>,
+        high_energy: std::sync::Arc<std::sync::atomic::AtomicU32>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         log::info!("[AudioPlayer] Starting progressive streaming for track {}", track_id);
         let (_stream, stream_handle) = OutputStream::try_default()?;
@@ -325,9 +325,9 @@ impl AudioPlayer {
         position: Duration,
         url: &str,
         token: &str,
-        bass_energy: Arc<Mutex<f32>>,
-        mid_energy: Arc<Mutex<f32>>,
-        high_energy: Arc<Mutex<f32>>,
+        bass_energy: Arc<std::sync::atomic::AtomicU32>,
+        mid_energy: Arc<std::sync::atomic::AtomicU32>,
+        high_energy: Arc<std::sync::atomic::AtomicU32>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("[AudioPlayer] Seeking to {:?} by restarting stream...", position);
 

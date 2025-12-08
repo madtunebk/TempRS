@@ -5,7 +5,7 @@ use crate::utils::artwork::load_thumbnail_artwork;
 
 /// Render tracks search results grid with pagination
 pub fn render_tracks_grid_paginated(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    if app.search_results_tracks.is_empty() {
+    if app.content.search_results_tracks.is_empty() {
         ui.vertical_centered(|ui| {
             ui.add_space(100.0);
             ui.label(
@@ -24,15 +24,15 @@ pub fn render_tracks_grid_paginated(app: &mut MusicPlayerApp, ui: &mut egui::Ui,
     }
 
     // Calculate pagination
-    let offset = app.search_page * app.search_page_size;
-    let end = (offset + app.search_page_size).min(app.search_results_tracks.len());
+    let offset = app.content.search_page * app.content.search_page_size;
+    let end = (offset + app.content.search_page_size).min(app.content.search_results_tracks.len());
     
-    if offset >= app.search_results_tracks.len() {
+    if offset >= app.content.search_results_tracks.len() {
         // Reset to first page if out of bounds
         return;
     }
     
-    let page_tracks: Vec<_> = app.search_results_tracks[offset..end].to_vec();
+    let page_tracks: Vec<_> = app.content.search_results_tracks[offset..end].to_vec();
     let (items_per_row, padding) = calculate_grid_layout(ui.available_width(), 220.0, 15.0);
 
     ui.add_space(10.0);
@@ -79,7 +79,7 @@ fn render_track_item(
 
     if !artwork_url.is_empty() {
         // Check memory cache first (fast path)
-        if let Some(texture) = app.thumb_cache.get(&artwork_url) {
+        if let Some(texture) = app.ui.thumb_cache.get(&artwork_url) {
             ui.painter().image(
                 texture.id(),
                 artwork_rect,
@@ -138,8 +138,8 @@ fn render_track_item(
 
 fn play_track(app: &mut MusicPlayerApp, track: &crate::app::playlists::Track) {
     log::info!("[Search] Playing track: {}", track.title);
-    app.playback_queue.load_tracks(vec![track.clone()]);
-    if let Some(current_track) = app.playback_queue.current_track() {
+    app.audio.playback_queue.load_tracks(vec![track.clone()]);
+    if let Some(current_track) = app.audio.playback_queue.current_track() {
         let track_id = current_track.id;
         app.play_track(track_id);
     }

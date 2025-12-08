@@ -29,7 +29,7 @@ pub fn render_social_buttons(
     let unique_id = ui.id().with(("like", track_id, artwork_rect.min.x as i32, artwork_rect.min.y as i32));
     let like_response = ui.interact(like_rect, unique_id, Sense::click());
     
-    let is_liked = app.liked_track_ids.contains(&track_id);
+    let is_liked = app.content.liked_track_ids.contains(&track_id);
     let (like_icon, like_bg_color) = if is_liked {
         ("❤", Color32::from_rgba_premultiplied(255, 85, 0, 200))  // Orange filled heart
     } else if like_response.hovered() {
@@ -197,7 +197,7 @@ pub fn render_track_card(
             ui.ctx().request_repaint();
         } else {
             // No artwork URL - show no_artwork.png placeholder
-            if let Some(no_artwork) = &app.no_artwork_texture {
+            if let Some(no_artwork) = &app.ui.no_artwork_texture {
                 ui.painter().image(
                     no_artwork.id(),
                     artwork_rect,

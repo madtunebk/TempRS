@@ -128,9 +128,9 @@ impl ShaderPipeline {
 // Callback for rendering shader
 pub struct ShaderCallback {
     pub shader: Arc<ShaderPipeline>,
-    pub bass_energy: Arc<std::sync::Mutex<f32>>,
-    pub mid_energy: Arc<std::sync::Mutex<f32>>,
-    pub high_energy: Arc<std::sync::Mutex<f32>>,
+    pub bass_energy: Arc<std::sync::atomic::AtomicU32>,
+    pub mid_energy: Arc<std::sync::atomic::AtomicU32>,
+    pub high_energy: Arc<std::sync::atomic::AtomicU32>,
     pub gamma: Arc<std::sync::Mutex<f32>>,
     pub contrast: Arc<std::sync::Mutex<f32>>,
     pub saturation: Arc<std::sync::Mutex<f32>>,
@@ -152,9 +152,9 @@ impl egui_wgpu::CallbackTrait for ShaderCallback {
             screen_descriptor.size_in_pixels[1] as f32,
         ];
 
-        let bass = *self.bass_energy.lock().unwrap();
-        let mid = *self.mid_energy.lock().unwrap();
-        let high = *self.high_energy.lock().unwrap();
+        let bass = crate::utils::error_handling::load_f32_atomic(&self.bass_energy);
+        let mid = crate::utils::error_handling::load_f32_atomic(&self.mid_energy);
+        let high = crate::utils::error_handling::load_f32_atomic(&self.high_energy);
         let gamma = *self.gamma.lock().unwrap();
         let contrast = *self.contrast.lock().unwrap();
         let saturation = *self.saturation.lock().unwrap();

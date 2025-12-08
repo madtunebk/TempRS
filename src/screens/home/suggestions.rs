@@ -10,13 +10,13 @@ pub fn render_suggestions_section(
     app: &mut MusicPlayerApp,
     ui: &mut egui::Ui,
 ) -> Option<TrackAction> {
-    let recommendations = app.home_content.recommendations.clone();
+    let recommendations = app.content.home_content.recommendations.clone();
     
     // Always show section header
     if !recommendations.is_empty() {
         if render_section_header(ui, "✨ Suggestions", Some("See more")) {
             log::info!("See more clicked for suggestions - navigating to Suggestions tab");
-            app.selected_tab = crate::app::player_app::MainTab::Suggestions;
+            app.ui.selected_tab = crate::app::player_app::MainTab::Suggestions;
         }
     } else {
         render_section_header(ui, "✨ Suggestions", None);
@@ -34,7 +34,7 @@ pub fn render_suggestions_section(
         ui.add_space(50.0);
         
         action
-    } else if app.home_recommendations_loading {
+    } else if app.content.home_recommendations_loading {
         // Show loading state for recommendations
         ui.vertical_centered(|ui| {
             ui.add_space(50.0);

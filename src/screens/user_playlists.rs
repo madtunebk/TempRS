@@ -5,9 +5,9 @@ use crate::ui_components::colors::*;
 
 pub fn render_user_playlists_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     // Fetch playlists on first visit
-    if !app.playlists_initial_fetch_done && !app.playlists_loading {
+    if !app.content.playlists_initial_fetch_done && !app.content.playlists_loading {
         app.fetch_playlists();
-        app.playlists_initial_fetch_done = true;
+        app.content.playlists_initial_fetch_done = true;
     }
     
     // Check for background fetch completion
@@ -18,7 +18,7 @@ pub fn render_user_playlists_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, c
         .show(ui, |ui| {
             ui.add_space(20.0);
             
-            // Title (centered)
+            // Title with playlist count
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
                 ui.label(
@@ -27,6 +27,15 @@ pub fn render_user_playlists_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, c
                         .color(egui::Color32::WHITE)
                         .strong()
                 );
+                
+                if !app.content.playlists.is_empty() {
+                    ui.add_space(15.0);
+                    ui.label(
+                        egui::RichText::new(format!("({} playlists)", app.content.playlists.len()))
+                            .size(16.0)
+                            .color(egui::Color32::GRAY)
+                    );
+                }
             });
             
             ui.add_space(20.0);
@@ -37,7 +46,7 @@ pub fn render_user_playlists_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, c
 }
 
 fn render_playlists(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    if app.playlists_loading {
+    if app.content.playlists_loading {
         ui.vertical_centered(|ui| {
             ui.add_space(100.0);
             ui.spinner();
@@ -46,8 +55,8 @@ fn render_playlists(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Con
         });
         return;
     }
-    
-    if app.playlists.is_empty() {
+
+    if app.content.playlists.is_empty() {
         ui.vertical_centered(|ui| {
             ui.add_space(100.0);
             ui.label(
@@ -70,22 +79,88 @@ fn render_playlists(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Con
         });
         return;
     }
-    
+
+    // Apply filter
+    let mut filtered_playlists = app.content.playlists.clone();
+    let filter_text = app.content.playlists_search_filter.to_lowercase();
+    if !filter_text.is_empty() {
+        filtered_playlists.retain(|playlist| {
+            playlist.title.to_lowercase().contains(&filter_text) ||
+            playlist.user.username.to_lowercase().contains(&filter_text)
+        });
+    }
+
+    // Apply sorting
+    match app.content.playlists_sort_order {
+        crate::app::player_app::PlaylistsSortOrder::RecentFirst => {
+            // Already in order from API
+        }
+        crate::app::player_app::PlaylistsSortOrder::NameAZ => {
+            filtered_playlists.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        }
+        crate::app::player_app::PlaylistsSortOrder::TrackCount => {
+            filtered_playlists.sort_by(|a, b| b.track_count.cmp(&a.track_count));
+        }
+    }
+
     // Calculate pagination
-    let start_idx = app.playlists_page * app.playlists_page_size;
-    let end_idx = (start_idx + app.playlists_page_size).min(app.playlists.len());
-    let page_playlists: Vec<_> = app.playlists[start_idx..end_idx].to_vec();
-    
-    // Show playlist count
+    let total_playlists = filtered_playlists.len();
+    let start_idx = app.content.playlists_page * app.content.playlists_page_size;
+    let end_idx = (start_idx + app.content.playlists_page_size).min(total_playlists);
+    let page_playlists: Vec<_> = filtered_playlists[start_idx..end_idx].to_vec();
+
+    // Calculate padding for alignment with grid
+    let (_, grid_padding) = calculate_grid_layout(ui.available_width(), 220.0, 15.0);
+
+    // Filter/Sort bar
+    ui.add_space(5.0);
     ui.horizontal(|ui| {
-        ui.add_space(20.0);
-        ui.label(
-            egui::RichText::new(format!("{} playlists", app.playlists.len()))
-                .size(14.0)
-                .color(egui::Color32::GRAY)
+        ui.add_space(grid_padding);
+
+        // Search filter
+        ui.label(egui::RichText::new("🔍").size(18.0));
+        ui.add_space(8.0);
+
+        let search_response = ui.add_sized(
+            egui::vec2(300.0, 32.0),
+            egui::TextEdit::singleline(&mut app.content.playlists_search_filter)
+                .hint_text("Filter by playlist name or creator...")
+                .desired_width(300.0)
         );
+
+        // Reset to page 0 when filter changes
+        if search_response.changed() {
+            app.content.playlists_page = 0;
+        }
+
+        // Clear button
+        if !app.content.playlists_search_filter.is_empty() {
+            ui.add_space(5.0);
+            if ui.button("✖").clicked() {
+                app.content.playlists_search_filter.clear();
+                app.content.playlists_page = 0;
+            }
+        }
+
+        ui.add_space(20.0);
+
+        // Sort dropdown
+        ui.label(egui::RichText::new("Sort:").size(14.0).color(egui::Color32::GRAY));
+        ui.add_space(5.0);
+
+        egui::ComboBox::from_id_source("playlists_sort")
+            .selected_text(match app.content.playlists_sort_order {
+                crate::app::player_app::PlaylistsSortOrder::RecentFirst => "Recent First",
+                crate::app::player_app::PlaylistsSortOrder::NameAZ => "Name (A-Z)",
+                crate::app::player_app::PlaylistsSortOrder::TrackCount => "Track Count",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut app.content.playlists_sort_order, crate::app::player_app::PlaylistsSortOrder::RecentFirst, "Recent First");
+                ui.selectable_value(&mut app.content.playlists_sort_order, crate::app::player_app::PlaylistsSortOrder::NameAZ, "Name (A-Z)");
+                ui.selectable_value(&mut app.content.playlists_sort_order, crate::app::player_app::PlaylistsSortOrder::TrackCount, "Track Count");
+            });
     });
-    
+
     ui.add_space(15.0);
     
     // Render playlists in grid
@@ -96,9 +171,9 @@ fn render_playlists(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Con
     // Pagination controls (centered)
     crate::ui_components::helpers::render_pagination_controls(
         ui,
-        &mut app.playlists_page,
-        app.playlists.len(),
-        app.playlists_page_size,
+        &mut app.content.playlists_page,
+        total_playlists,
+        app.content.playlists_page_size,
     );
     
     ui.add_space(20.0);
@@ -214,10 +289,10 @@ fn render_playlist_card(
     }
     
     // Unlike/like button (heart icon overlay on artwork) - only for non-user playlists
-    let is_user_playlist = app.user_created_playlist_ids.contains(&playlist.id);
+    let is_user_playlist = app.content.user_created_playlist_ids.contains(&playlist.id);
     
     if !is_user_playlist {
-        let is_liked = app.liked_playlist_ids.contains(&playlist.id);
+        let is_liked = app.content.liked_playlist_ids.contains(&playlist.id);
         let heart_size = 32.0;
         let heart_pos = artwork_rect.min + egui::Vec2::new(4.0, 4.0);
         let heart_rect = egui::Rect::from_min_size(heart_pos, egui::Vec2::new(heart_size, heart_size));
@@ -323,26 +398,26 @@ fn render_playlist_card(
         if !playlist.tracks.is_empty() {
             // Playlist already has tracks - load directly into queue
             log::info!("[Playlists] Loading playlist '{}' with {} tracks", playlist.title, playlist.tracks.len());
-            app.playback_queue.load_tracks(playlist.tracks.clone());
+            app.audio.playback_queue.load_tracks(playlist.tracks.clone());
             
             // Start playing first track
-            if let Some(first_track) = app.playback_queue.current_track() {
+            if let Some(first_track) = app.audio.playback_queue.current_track() {
                 log::info!("[Playlists] Starting playback: {}", first_track.title);
                 app.play_track(first_track.id);
             }
         } else {
             // Playlist has no tracks - need to fetch full details
             log::info!("[Playlists] Clicked liked playlist '{}' - fetching full details (ID: {})", playlist.title, playlist.id);
-            app.selected_playlist_id = Some(playlist.id);
-            app.playlist_loading_id = Some(playlist.id);
+            app.content.selected_playlist_id = Some(playlist.id);
+            app.content.playlist_loading_id = Some(playlist.id);
             
             // Fetch playlist with tracks
-            if let Some(oauth) = &app.oauth_manager {
+            if let Some(oauth) = &app.auth.oauth_manager {
                 if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
                     let token = token_data.access_token.clone();
                     let playlist_id = playlist.id;
                     let (tx, rx) = std::sync::mpsc::channel();
-                    app.playlist_rx = Some(rx);
+                    app.tasks.playlist_rx = Some(rx);
                     
                     std::thread::spawn(move || {
                         let rt = tokio::runtime::Runtime::new().unwrap();

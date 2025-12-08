@@ -5,9 +5,9 @@ use crate::ui_components::colors::*;
 
 pub fn render_likes_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     // Fetch likes on first visit
-    if !app.likes_initial_fetch_done && !app.likes_loading {
+    if !app.content.likes_initial_fetch_done && !app.content.likes_loading {
         app.fetch_likes();
-        app.likes_initial_fetch_done = true;
+        app.content.likes_initial_fetch_done = true;
     }
     
     // Check for background fetch completion
@@ -18,7 +18,7 @@ pub fn render_likes_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui
         .show(ui, |ui| {
             ui.add_space(20.0);
             
-            // Title (centered)
+            // Title with track count
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
                 ui.label(
@@ -27,6 +27,16 @@ pub fn render_likes_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui
                         .color(egui::Color32::WHITE)
                         .strong()
                 );
+                
+                let total = app.content.likes_tracks.len() + app.content.user_tracks.len();
+                if total > 0 {
+                    ui.add_space(15.0);
+                    ui.label(
+                        egui::RichText::new(format!("({} tracks)", total))
+                            .size(16.0)
+                            .color(egui::Color32::GRAY)
+                    );
+                }
             });
             
             ui.add_space(20.0);
@@ -37,7 +47,7 @@ pub fn render_likes_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui
 }
 
 fn render_liked_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    if app.likes_loading {
+    if app.content.likes_loading {
         ui.vertical_centered(|ui| {
             ui.add_space(100.0);
             ui.spinner();
@@ -46,20 +56,20 @@ fn render_liked_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::
         });
         return;
     }
-    
+
     // Combine liked tracks + user uploaded tracks
     let mut all_tracks_with_badges: Vec<(crate::models::track::Track, &str)> = Vec::new();
-    
+
     // Add liked tracks with 💜 badge
-    for track in &app.likes_tracks {
+    for track in &app.content.likes_tracks {
         all_tracks_with_badges.push((track.clone(), "💜"));
     }
-    
+
     // Add user uploaded tracks with 🎤 badge
-    for track in &app.user_tracks {
+    for track in &app.content.user_tracks {
         all_tracks_with_badges.push((track.clone(), "🎤"));
     }
-    
+
     if all_tracks_with_badges.is_empty() {
         ui.vertical_centered(|ui| {
             ui.add_space(100.0);
@@ -83,28 +93,88 @@ fn render_liked_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::
         });
         return;
     }
-    
+
+    // Apply filter
+    let filter_text = app.content.likes_search_filter.to_lowercase();
+    if !filter_text.is_empty() {
+        all_tracks_with_badges.retain(|(track, _)| {
+            track.title.to_lowercase().contains(&filter_text) ||
+            track.user.username.to_lowercase().contains(&filter_text) ||
+            track.genre.as_ref().map_or(false, |g| g.to_lowercase().contains(&filter_text))
+        });
+    }
+
+    // Apply sorting
+    match app.content.likes_sort_order {
+        crate::app::player_app::LikesSortOrder::RecentFirst => {
+            // Already in order from API
+        }
+        crate::app::player_app::LikesSortOrder::TitleAZ => {
+            all_tracks_with_badges.sort_by(|a, b| a.0.title.to_lowercase().cmp(&b.0.title.to_lowercase()));
+        }
+        crate::app::player_app::LikesSortOrder::ArtistAZ => {
+            all_tracks_with_badges.sort_by(|a, b| a.0.user.username.to_lowercase().cmp(&b.0.user.username.to_lowercase()));
+        }
+    }
+
     // Calculate pagination
     let total_tracks = all_tracks_with_badges.len();
-    let start_idx = app.likes_page * app.likes_page_size;
-    let end_idx = (start_idx + app.likes_page_size).min(total_tracks);
+    let start_idx = app.content.likes_page * app.content.likes_page_size;
+    let end_idx = (start_idx + app.content.likes_page_size).min(total_tracks);
     let page_tracks: Vec<_> = all_tracks_with_badges[start_idx..end_idx].to_vec();
-    
-    // Show track count
+
+    // Calculate padding for alignment with grid
+    let (_, grid_padding) = calculate_grid_layout(ui.available_width(), 220.0, 15.0);
+
+    // Filter/Sort bar
+    ui.add_space(5.0);
     ui.horizontal(|ui| {
-        ui.add_space(20.0);
-        ui.label(
-            egui::RichText::new(format!(
-                "{} tracks ({} liked, {} uploaded)", 
-                total_tracks,
-                app.likes_tracks.len(),
-                app.user_tracks.len()
-            ))
-                .size(14.0)
-                .color(egui::Color32::GRAY)
+        ui.add_space(grid_padding);
+
+        // Search filter
+        ui.label(egui::RichText::new("🔍").size(18.0));
+        ui.add_space(8.0);
+
+        let search_response = ui.add_sized(
+            egui::vec2(300.0, 32.0),
+            egui::TextEdit::singleline(&mut app.content.likes_search_filter)
+                .hint_text("Filter by title, artist, or genre...")
+                .desired_width(300.0)
         );
+
+        // Reset to page 0 when filter changes
+        if search_response.changed() {
+            app.content.likes_page = 0;
+        }
+
+        // Clear button
+        if !app.content.likes_search_filter.is_empty() {
+            ui.add_space(5.0);
+            if ui.button("✖").clicked() {
+                app.content.likes_search_filter.clear();
+                app.content.likes_page = 0;
+            }
+        }
+
+        ui.add_space(20.0);
+
+        // Sort dropdown
+        ui.label(egui::RichText::new("Sort:").size(14.0).color(egui::Color32::GRAY));
+        ui.add_space(5.0);
+
+        egui::ComboBox::from_id_source("likes_sort")
+            .selected_text(match app.content.likes_sort_order {
+                crate::app::player_app::LikesSortOrder::RecentFirst => "Recent First",
+                crate::app::player_app::LikesSortOrder::TitleAZ => "Title (A-Z)",
+                crate::app::player_app::LikesSortOrder::ArtistAZ => "Artist (A-Z)",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut app.content.likes_sort_order, crate::app::player_app::LikesSortOrder::RecentFirst, "Recent First");
+                ui.selectable_value(&mut app.content.likes_sort_order, crate::app::player_app::LikesSortOrder::TitleAZ, "Title (A-Z)");
+                ui.selectable_value(&mut app.content.likes_sort_order, crate::app::player_app::LikesSortOrder::ArtistAZ, "Artist (A-Z)");
+            });
     });
-    
+
     ui.add_space(15.0);
     
     // Render tracks in grid with badges
@@ -115,9 +185,9 @@ fn render_liked_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::
     // Pagination controls (centered)
     crate::ui_components::helpers::render_pagination_controls(
         ui,
-        &mut app.likes_page,
+        &mut app.content.likes_page,
         total_tracks,
-        app.likes_page_size,
+        app.content.likes_page_size,
     );
     
     ui.add_space(20.0);
@@ -143,7 +213,7 @@ fn render_tracks_grid_with_badges(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _
                 );
                 
                 if clicked {
-                    app.playback_queue.load_tracks(vec![track.clone()]);
+                    app.audio.playback_queue.load_tracks(vec![track.clone()]);
                     app.play_track(track.id);
                 }
                 
@@ -244,7 +314,7 @@ fn render_track_card_with_badge(
             ui.ctx().request_repaint();
         } else {
             // No artwork URL - show no_artwork.png placeholder
-            if let Some(no_artwork) = &app.no_artwork_texture {
+            if let Some(no_artwork) = &app.ui.no_artwork_texture {
                 ui.painter().image(
                     no_artwork.id(),
                     artwork_rect,
@@ -317,7 +387,7 @@ fn render_track_card_with_badge(
         );
         
         // Heart icon
-        let heart_icon = if app.liked_track_ids.contains(&track.id) {
+        let heart_icon = if app.content.liked_track_ids.contains(&track.id) {
             "❤"  // Filled heart (liked)
         } else {
             "💔"  // Broken heart (unliked)

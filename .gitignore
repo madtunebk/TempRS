@@ -58,3 +58,7 @@ prebuild_backups/
 .env
 .ref_wgsls_editor/
 .temprs/
+
+# === Refactoring backups ===
+.tempbackup/
+TEMPEDITOR

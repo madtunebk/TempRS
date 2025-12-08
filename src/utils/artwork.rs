@@ -195,14 +195,14 @@ pub fn load_track_artwork(
     // 1. Check memory cache by URL (if track has artwork_url)
     if let Some(url) = artwork_url {
         let url_high = url.replace("-large.jpg", "-t500x500.jpg");
-        if let Some(texture) = app.thumb_cache.get(&url_high) {
+        if let Some(texture) = app.ui.thumb_cache.get(&url_high) {
             log::debug!("[Artwork] Track {} found in memory cache (by URL)", track_id);
             return Some(texture.clone());
         }
     }
     
     // 2. Check memory cache by track ID
-    if let Some(texture) = app.thumb_cache.get(cache_key) {
+    if let Some(texture) = app.ui.thumb_cache.get(cache_key) {
         log::debug!("[Artwork] Track {} found in memory cache (by ID)", track_id);
         return Some(texture.clone());
     }
@@ -220,7 +220,7 @@ pub fn load_track_artwork(
             let texture = ctx.load_texture(cache_key, img, egui::TextureOptions::LINEAR);
             
             // Cache in memory for next time
-            app.thumb_cache.insert(cache_key.to_string(), texture.clone());
+            app.ui.thumb_cache.insert(cache_key.to_string(), texture.clone());
             log::debug!("[Artwork] Track {} loaded from disk cache ({}x{})", track_id, w, h);
             
             return Some(texture);
@@ -242,9 +242,9 @@ pub fn load_track_artwork(
 pub fn fetch_artwork(track_id: u64, artwork_url: String) -> (Sender<()>, std::sync::mpsc::Receiver<egui::ColorImage>) {
     let (tx, rx) = channel::<egui::ColorImage>();
     let (cancel_tx, _cancel_rx) = channel::<()>();
-    
+
     std::thread::spawn(move || {
-        // Check cache first using track ID
+        // Check cache first using track ID (synchronous check before async work)
         if let Some(cached_bytes) = crate::utils::cache::load_artwork_cache(track_id) {
             if let Ok(decoded) = image::load_from_memory(&cached_bytes) {
                 let rgba = decoded.to_rgba8();
@@ -257,9 +257,16 @@ pub fn fetch_artwork(track_id: u64, artwork_url: String) -> (Sender<()>, std::sy
                 return;
             }
         }
-        
-        // Not in cache, fetch from network
-        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        // Not in cache, fetch from network using async helper
+        let rt = match crate::utils::error_handling::create_runtime() {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("[Artwork] {}", e);
+                return;
+            }
+        };
+
         rt.block_on(async {
             // Replace image size suffix with -t500x500.jpg for higher quality
             let high_res_url = if artwork_url.contains("-large.jpg") {
@@ -269,9 +276,9 @@ pub fn fetch_artwork(track_id: u64, artwork_url: String) -> (Sender<()>, std::sy
             } else {
                 artwork_url.replace(".jpg", "-t500x500.jpg")
             };
-            
+
             let client = crate::utils::http::client();
-            
+
             // Try up to 3 times with exponential backoff
             let mut success = false;
             for attempt in 1..=3 {
@@ -280,7 +287,7 @@ pub fn fetch_artwork(track_id: u64, artwork_url: String) -> (Sender<()>, std::sy
                         if let Ok(bytes) = resp.bytes().await {
                             // Save to cache using track ID
                             let _ = crate::utils::cache::save_artwork_cache(track_id, &bytes, false);
-                            
+
                             if let Ok(decoded) = image::load_from_memory(&bytes) {
                                 let rgba = decoded.to_rgba8();
                                 let (w, h) = rgba.dimensions();
@@ -303,7 +310,7 @@ pub fn fetch_artwork(track_id: u64, artwork_url: String) -> (Sender<()>, std::sy
                     }
                 }
             }
-            
+
             // If all attempts failed, cache and send no_artwork placeholder
             if !success {
                 log::warn!("[Artwork] All 3 attempts failed, caching placeholder");
@@ -311,7 +318,7 @@ pub fn fetch_artwork(track_id: u64, artwork_url: String) -> (Sender<()>, std::sy
             }
         });
     });
-    
+
     (cancel_tx, rx)
 }
 
@@ -354,7 +361,7 @@ pub fn load_thumbnail_artwork(
     validate_before_cache: bool,
 ) {
     // Skip if already loaded in memory
-    if app.thumb_cache.contains_key(&url) {
+    if app.ui.thumb_cache.contains_key(&url) {
         return;
     }
     
@@ -373,8 +380,8 @@ pub fn load_thumbnail_artwork(
                 color_image,
                 egui::TextureOptions::LINEAR,
             );
-            app.thumb_cache.insert(url.clone(), texture);
-            app.thumb_pending.remove(&url);
+            app.ui.thumb_cache.insert(url.clone(), texture);
+            app.ui.thumb_pending.remove(&url);
             log::info!("[Artwork] Track {} loaded from disk cache ({}x{})", track_id, size[0], size[1]);
             return;
         } else {
@@ -383,12 +390,12 @@ pub fn load_thumbnail_artwork(
     }
     
     // Skip download if already pending
-    if app.thumb_pending.get(&url) == Some(&true) {
+    if app.ui.thumb_pending.get(&url) == Some(&true) {
         return;
     }
     
     // Mark as pending and start download
-    app.thumb_pending.insert(url.clone(), true);
+    app.ui.thumb_pending.insert(url.clone(), true);
     log::debug!("[Artwork] Track {} marked as pending for download", track_id);
 
     // SLOW PATH: Not in cache → download async with retry
@@ -396,12 +403,11 @@ pub fn load_thumbnail_artwork(
     let ctx_clone = ctx.clone();
     let url_clone = url.clone();
 
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
+    crate::utils::async_helper::spawn_fire_and_forget(move || {
+        Box::pin(async move {
             let client = crate::utils::http::client();
             let mut success = false;
-            
+
             // Try up to 3 times with exponential backoff
             for attempt in 1..=3 {
                 match client.get(&url_clone).send().await {
@@ -431,12 +437,14 @@ pub fn load_thumbnail_artwork(
                     }
                 }
             }
-            
+
             // If all attempts failed, save placeholder to prevent retry loops
             if !success && validate_before_cache {
                 log::warn!("[Artwork] Track {} all 3 attempts failed, caching placeholder", track_id);
                 let _ = crate::utils::cache::save_artwork_cache(track_id, &[], true);
             }
-        });
+
+            Ok(())
+        })
     });
 }

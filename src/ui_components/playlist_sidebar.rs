@@ -6,8 +6,8 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
     let mut clicked_idx = None;
     
     // Get tracks in queue order (respects shuffle)
-    let original_tracks = &app.playback_queue.original_tracks;
-    let queue_indices = &app.playback_queue.current_queue;
+    let original_tracks = &app.audio.playback_queue.original_tracks;
+    let queue_indices = &app.audio.playback_queue.current_queue;
     
     // Build playlist in queue order
     let playlist: Vec<_> = queue_indices
@@ -16,16 +16,16 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
         .collect();
     
     // Clean up pending entries that are now in memory cache
-    let cached_urls: Vec<String> = app.thumb_cache.keys().cloned().collect();
+    let cached_urls: Vec<String> = app.ui.thumb_cache.keys().cloned().collect();
     for url in cached_urls {
-        app.thumb_pending.remove(&url);
+        app.ui.thumb_pending.remove(&url);
     }
     
     // Track if we need to auto-scroll
-    let track_changed = app.current_track_id != app.last_track_id;
+    let track_changed = app.audio.current_track_id != app.audio.last_track_id;
     
     // Get current queue position (simple index now since playlist is in queue order)
-    let current_queue_idx = app.playback_queue.current_index;
+    let current_queue_idx = app.audio.playback_queue.current_index;
     
     ui.vertical(|ui| {
         ui.add_space(10.0);
@@ -44,14 +44,14 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Collapse button
                 if ui.add_sized([30.0, 30.0], egui::Button::new("◀").fill(egui::Color32::from_rgb(35, 35, 40))).clicked() {
-                    app.queue_collapsed = true;
+                    app.ui.queue_collapsed = true;
                 }
                 
                 ui.add_space(5.0);
                 
                 // Like playlist button (only show if we have a selected playlist)
-                if let Some(playlist_id) = app.selected_playlist_id {
-                    let is_liked = app.liked_playlist_ids.contains(&playlist_id);
+                if let Some(playlist_id) = app.content.selected_playlist_id {
+                    let is_liked = app.content.liked_playlist_ids.contains(&playlist_id);
                     let heart_icon = if is_liked { "❤" } else { "♡" };
                     let heart_color = if is_liked { 
                         egui::Color32::from_rgb(255, 85, 0) // Orange when liked
@@ -106,7 +106,7 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
                     }
                     
                     let track = &playlist[i];
-                    let is_current_track = app.current_track_id == Some(track.id);
+                    let is_current_track = app.audio.current_track_id == Some(track.id);
                     
                     let response = ui.add(
                         egui::Button::new("")
@@ -171,7 +171,7 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
                     );
                     
                     // Ambient glow effect around artwork (only for currently playing track)
-                    if app.current_track_id == Some(track.id) {
+                    if app.audio.current_track_id == Some(track.id) {
                         // More visible glow - 2 layers
                         for i in 0..2 {
                             let expansion = (i + 1) as f32 * 2.5;
@@ -191,7 +191,7 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
                         let hq_url = artwork_url.replace("-large.jpg", "-t500x500.jpg");
                         
                         // Check if we have this thumbnail cached in memory
-                        if let Some(texture) = app.thumb_cache.get(&hq_url) {
+                        if let Some(texture) = app.ui.thumb_cache.get(&hq_url) {
                             // Draw cached thumbnail
                             let mut mesh = egui::Mesh::with_texture(texture.id());
                             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
@@ -213,10 +213,10 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
                                         &rgba,
                                     );
                                     let texture = ctx.load_texture(&hq_url, img, egui::TextureOptions::LINEAR);
-                                    app.thumb_cache.insert(hq_url.clone(), texture.clone());
+                                    app.ui.thumb_cache.insert(hq_url.clone(), texture.clone());
                                     
                                     // Clear pending flag since we loaded it
-                                    app.thumb_pending.remove(&hq_url);
+                                    app.ui.thumb_pending.remove(&hq_url);
                                     
                                     // Draw it now
                                     let mut mesh = egui::Mesh::with_texture(texture.id());
@@ -229,7 +229,7 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
                                     ui.painter().add(egui::Shape::mesh(mesh));
                                 } else {
                                     // Cached data corrupted, show no_artwork placeholder
-                                    if let Some(no_artwork) = &app.no_artwork_texture {
+                                    if let Some(no_artwork) = &app.ui.no_artwork_texture {
                                         let mut mesh = egui::Mesh::with_texture(no_artwork.id());
                                         let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                                         mesh.add_rect_with_uv(
@@ -246,13 +246,13 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
                                         );
                                     }
                                 }
-                            } else if !app.thumb_pending.get(&hq_url).unwrap_or(&false) {
+                            } else if !app.ui.thumb_pending.get(&hq_url).unwrap_or(&false) {
                                 // Not in disk cache and not loading, start fetching (SLOW PATH)
-                                app.thumb_pending.insert(hq_url.clone(), true);
+                                app.ui.thumb_pending.insert(hq_url.clone(), true);
                                 request_thumb_fetch(ctx, track.id, &hq_url);
                                 
                                 // Draw no_artwork placeholder while loading
-                                if let Some(no_artwork) = &app.no_artwork_texture {
+                                if let Some(no_artwork) = &app.ui.no_artwork_texture {
                                     let mut mesh = egui::Mesh::with_texture(no_artwork.id());
                                     let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                                     mesh.add_rect_with_uv(
@@ -270,7 +270,7 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
                                 }
                             } else {
                                 // Loading in progress, show no_artwork placeholder
-                                if let Some(no_artwork) = &app.no_artwork_texture {
+                                if let Some(no_artwork) = &app.ui.no_artwork_texture {
                                     let mut mesh = egui::Mesh::with_texture(no_artwork.id());
                                     let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                                     mesh.add_rect_with_uv(
@@ -290,7 +290,7 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
                         }
                     } else {
                         // No artwork URL, use no_artwork placeholder
-                        if let Some(no_artwork) = &app.no_artwork_texture {
+                        if let Some(no_artwork) = &app.ui.no_artwork_texture {
                             let mut mesh = egui::Mesh::with_texture(no_artwork.id());
                             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                             mesh.add_rect_with_uv(
@@ -371,7 +371,7 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
     
     // Update last_track_id to prevent repeated scrolling
     if track_changed {
-        app.last_track_id = app.current_track_id;
+        app.audio.last_track_id = app.audio.current_track_id;
     }
     
     clicked_idx
@@ -387,11 +387,10 @@ fn request_thumb_fetch(ctx: &egui::Context, track_id: u64, url: &str) {
     let ctx_clone = ctx.clone();
     
     // Spawn single thread per image for better parallelism (same as search)
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
+    crate::utils::async_helper::spawn_fire_and_forget(move || {
+        Box::pin(async move {
             let client = crate::utils::http::client();
-            
+
             match client.get(&url_clone).send().await {
                 Ok(resp) => {
                     if let Ok(bytes) = resp.bytes().await {
@@ -409,6 +408,8 @@ fn request_thumb_fetch(ctx: &egui::Context, track_id: u64, url: &str) {
                     let _ = crate::utils::cache::save_artwork_cache(track_id, &[], true);
                 }
             }
-        });
+
+            Ok(())
+        })
     });
 }

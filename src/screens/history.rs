@@ -50,12 +50,12 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             ui.add_space(20.0);
             
             // Get total count from database (cache it)
-            if app.history_total_tracks == 0 {
-                app.history_total_tracks = app.playback_history.get_count() as usize;
+            if app.content.history_total_tracks == 0 {
+                app.content.history_total_tracks = app.content.playback_history.get_count() as usize;
             }
             
             // Show empty state if no history
-            if app.history_total_tracks == 0 {
+            if app.content.history_total_tracks == 0 {
                 ui.vertical_centered(|ui| {
                     ui.add_space(100.0);
                     ui.label(
@@ -80,17 +80,17 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             }
             
             // Calculate pagination
-            let _total_pages = (app.history_total_tracks + app.history_page_size - 1) / app.history_page_size;
-            let offset = app.history_page * app.history_page_size;
+            let _total_pages = (app.content.history_total_tracks + app.content.history_page_size - 1) / app.content.history_page_size;
+            let offset = app.content.history_page * app.content.history_page_size;
             
             // Get current page of history from database
-            let history_records = app.playback_history.get_recent_tracks_paginated(
-                app.history_page_size,
+            let history_records = app.content.playback_history.get_recent_tracks_paginated(
+                app.content.history_page_size,
                 offset
             );
             
             // Convert to Track objects and apply filter
-            let filter_text = app.history_search_filter.to_lowercase();
+            let filter_text = app.content.history_search_filter.to_lowercase();
             let mut history_tracks: Vec<Track> = history_records
                 .iter()
                 .filter(|record| {
@@ -123,7 +123,7 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 .collect();
             
             // Apply sorting (database already gives us RecentFirst)
-            match app.history_sort_order {
+            match app.content.history_sort_order {
                 HistorySortOrder::RecentFirst => {
                     // Already sorted by played_at DESC from database
                 }
@@ -156,22 +156,22 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 
                 let search_response = ui.add_sized(
                     egui::vec2(300.0, 32.0),
-                    egui::TextEdit::singleline(&mut app.history_search_filter)
+                    egui::TextEdit::singleline(&mut app.content.history_search_filter)
                         .hint_text("Filter by title, artist, or genre...")
                         .desired_width(300.0)
                 );
                 
                 // Reset to page 0 when filter changes
                 if search_response.changed() {
-                    app.history_page = 0;
+                    app.content.history_page = 0;
                 }
                 
                 // Show clear button if filter is active
-                if !app.history_search_filter.is_empty() {
+                if !app.content.history_search_filter.is_empty() {
                     ui.add_space(5.0);
                     if ui.button("✖").clicked() {
-                        app.history_search_filter.clear();
-                        app.history_page = 0;
+                        app.content.history_search_filter.clear();
+                        app.content.history_page = 0;
                     }
                 }
                 
@@ -182,24 +182,24 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 ui.add_space(5.0);
                 
                 egui::ComboBox::from_id_salt("history_sort")
-                    .selected_text(app.history_sort_order.label())
+                    .selected_text(app.content.history_sort_order.label())
                     .width(120.0)
                     .show_ui(ui, |ui| {
                         let mut changed = false;
-                        changed |= ui.selectable_value(&mut app.history_sort_order, HistorySortOrder::RecentFirst, "Recent First").clicked();
-                        changed |= ui.selectable_value(&mut app.history_sort_order, HistorySortOrder::RecentLast, "Oldest First").clicked();
-                        changed |= ui.selectable_value(&mut app.history_sort_order, HistorySortOrder::TitleAZ, "Title (A-Z)").clicked();
-                        changed |= ui.selectable_value(&mut app.history_sort_order, HistorySortOrder::ArtistAZ, "Artist (A-Z)").clicked();
+                        changed |= ui.selectable_value(&mut app.content.history_sort_order, HistorySortOrder::RecentFirst, "Recent First").clicked();
+                        changed |= ui.selectable_value(&mut app.content.history_sort_order, HistorySortOrder::RecentLast, "Oldest First").clicked();
+                        changed |= ui.selectable_value(&mut app.content.history_sort_order, HistorySortOrder::TitleAZ, "Title (A-Z)").clicked();
+                        changed |= ui.selectable_value(&mut app.content.history_sort_order, HistorySortOrder::ArtistAZ, "Artist (A-Z)").clicked();
                         
                         if changed {
-                            app.history_page = 0;
+                            app.content.history_page = 0;
                         }
                     });
             });
             ui.add_space(15.0);
             
             // Show "no results" message if filter is active but no tracks match
-            if !app.history_search_filter.is_empty() && history_tracks.is_empty() {
+            if !app.content.history_search_filter.is_empty() && history_tracks.is_empty() {
                 ui.vertical_centered(|ui| {
                     ui.add_space(80.0);
                     ui.label(
@@ -233,7 +233,7 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                             if track.stream_url.is_none() {
                                 app.fetch_and_play_track(track_id);
                             } else {
-                                app.playback_queue.load_tracks(vec![track.clone()]);
+                                app.audio.playback_queue.load_tracks(vec![track.clone()]);
                                 app.play_track(track_id);
                             }
                         }
@@ -246,8 +246,8 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                             log::info!("[History] Playlist contains DB tracks, fetching full data...");
                             app.fetch_and_play_playlist(history_tracks.iter().map(|t| t.id).collect());
                         } else {
-                            app.playback_queue.load_tracks(history_tracks.clone());
-                            if let Some(first_track) = app.playback_queue.current_track() {
+                            app.audio.playback_queue.load_tracks(history_tracks.clone());
+                            if let Some(first_track) = app.audio.playback_queue.current_track() {
                                 app.play_track(first_track.id);
                             }
                         }
@@ -260,9 +260,9 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             
             crate::ui_components::helpers::render_pagination_controls(
                 ui,
-                &mut app.history_page,
-                app.history_total_tracks,
-                app.history_page_size,
+                &mut app.content.history_page,
+                app.content.history_total_tracks,
+                app.content.history_page_size,
             );
             
             ui.add_space(20.0);
@@ -306,7 +306,7 @@ fn preload_history_artwork(
         let cache_key = format!("track:{}", track_id);
         
         // Skip if already in memory cache
-        if app.thumb_cache.contains_key(&cache_key) {
+        if app.ui.thumb_cache.contains_key(&cache_key) {
             continue;
         }
         
@@ -319,7 +319,7 @@ fn preload_history_artwork(
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
                 
                 let texture = ctx.load_texture(&cache_key, color_image, egui::TextureOptions::LINEAR);
-                app.thumb_cache.insert(cache_key, texture);
+                app.ui.thumb_cache.insert(cache_key, texture);
             }
         }
         // If not in cache, render_track_card will show no_artwork placeholder or gray box

@@ -1,19 +1,16 @@
 use eframe::egui;
 use crate::utils::oauth::OAuthManager;
-use crate::utils::audio_controller::AudioController;
-use crate::utils::playback_history::PlaybackHistoryDB;
 use log::{info, warn, error, debug};
-use crate::app::queue::PlaybackQueue;
-use crate::app::playlists::Track as APITrack;
 use crate::app::home::HomeContent;
 use crate::app_state::{AppState, RepeatMode};
 use std::sync::mpsc::{Receiver, channel};
-use std::sync::Arc;
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 // State modules
 use crate::state::{AudioState, AuthState, UIState, ContentState, BackgroundTasks};
+
+// Constants
+use crate::constants::*;
 
 // Re-export enums from state modules for convenience
 pub use crate::state::ui_state::{AppScreen, MainTab};
@@ -43,88 +40,80 @@ impl Default for MusicPlayerApp {
     fn default() -> Self {
         // Cache cleanup disabled - was causing app freezing on startup
         // TODO: Re-enable with better async implementation later
-        // std::thread::spawn(|| {
-        //     if let Ok((age_deleted, size_deleted)) = crate::utils::cache::cleanup_cache_with_limits(30, 100) {
-        //         if age_deleted > 0 || size_deleted > 0 {
-        //             println!("[Cache] Startup cleanup: {} old entries (>30 days), {} over-limit entries", age_deleted, size_deleted);
-        //         }
-        //     }
-        // });
 
-        // Initialize OAuth manager with credentials from main.rs
-        let oauth_manager = {
-            use crate::utils::oauth::OAuthConfig;
-
-            let client_id = crate::SOUNDCLOUD_CLIENT_ID.to_string();
-            let client_secret = crate::SOUNDCLOUD_CLIENT_SECRET.to_string();
-            let redirect_uri = "http://localhost:3000/callback".to_string();
-            let config = OAuthConfig::new(client_id, client_secret, redirect_uri);
-
-            OAuthManager::new(config)
-        };
-
-        // Load app state to get saved volume/shuffle/repeat preferences
         let app_state = AppState::new();
-        let volume = app_state.get_volume();
-        let muted = app_state.is_muted();
-        let shuffle_mode = app_state.get_shuffle_mode();
-        let repeat_mode = app_state.get_repeat_mode();
-        let volume_before_mute = if muted { volume } else { 0.7 };
-
-        // Create ContentState with app_state and custom page sizes (12 for grid layout)
-        let mut content = ContentState::default();
-        content.app_state = app_state;
-        content.search_page_size = 12;
-        content.suggestions_page_size = 12;
-        content.likes_page_size = 12;
-        content.playlists_page_size = 12;
-        content.history_page_size = 12;
-        content.home_content = HomeContent::new();
-
-        // Create UIState with custom splash duration (2 seconds)
-        let mut ui = UIState::default();
-        ui.splash_min_duration = Duration::from_secs(2);
-        ui.artwork_dominant_color = egui::Color32::from_rgb(255, 85, 0);
-        ui.artwork_edge_colors = [
-            egui::Color32::from_rgb(255, 85, 0),
-            egui::Color32::from_rgb(255, 85, 0),
-            egui::Color32::from_rgb(255, 85, 0),
-            egui::Color32::from_rgb(255, 85, 0),
-        ];
+        let oauth_manager = Self::create_oauth_manager();
 
         Self {
-            // Audio state (with volume/shuffle/repeat from app_state)
-            audio: {
-                let mut audio_state = AudioState::default();
-                audio_state.volume = volume;
-                audio_state.muted = muted;
-                audio_state.volume_before_mute = volume_before_mute;
-                audio_state.shuffle_mode = shuffle_mode;
-                audio_state.repeat_mode = repeat_mode;
-                audio_state
-            },
-
-            // Auth state (with OAuth manager and 60s token check interval)
-            auth: {
-                let mut auth_state = AuthState::default();
-                auth_state.oauth_manager = Some(oauth_manager);
-                auth_state.token_check_interval = Duration::from_secs(60);
-                auth_state
-            },
-
-            // UI state (with custom splash duration and artwork colors)
-            ui,
-
-            // Content state (with app_state and custom page sizes)
-            content,
-
-            // Background tasks (all None by default)
+            audio: Self::create_audio_state(&app_state),
+            auth: Self::create_auth_state(oauth_manager),
+            ui: Self::create_ui_state(),
+            content: Self::create_content_state(app_state),
             tasks: BackgroundTasks::default(),
         }
     }
 }
 
 impl MusicPlayerApp {
+    /// Create OAuth manager with credentials from main.rs
+    fn create_oauth_manager() -> OAuthManager {
+        use crate::utils::oauth::OAuthConfig;
+
+        let client_id = crate::SOUNDCLOUD_CLIENT_ID.to_string();
+        let client_secret = crate::SOUNDCLOUD_CLIENT_SECRET.to_string();
+        let redirect_uri = OAUTH_REDIRECT_URI.to_string();
+        let config = OAuthConfig::new(client_id, client_secret, redirect_uri);
+
+        OAuthManager::new(config)
+    }
+
+    /// Create AudioState with saved playback preferences
+    fn create_audio_state(app_state: &AppState) -> AudioState {
+        let mut audio = AudioState::default();
+        audio.volume = app_state.get_volume();
+        audio.muted = app_state.is_muted();
+        audio.volume_before_mute = if audio.muted { audio.volume } else { DEFAULT_VOLUME_BEFORE_MUTE };
+        audio.shuffle_mode = app_state.get_shuffle_mode();
+        audio.repeat_mode = app_state.get_repeat_mode();
+        audio
+    }
+
+    /// Create AuthState with OAuth manager
+    fn create_auth_state(oauth_manager: OAuthManager) -> AuthState {
+        let mut auth = AuthState::default();
+        auth.oauth_manager = Some(oauth_manager);
+        auth.token_check_interval = Duration::from_secs(TOKEN_CHECK_INTERVAL_SECS);
+        auth
+    }
+
+    /// Create UIState with custom splash duration and artwork colors
+    fn create_ui_state() -> UIState {
+        let mut ui = UIState::default();
+        ui.splash_min_duration = Duration::from_secs(SPLASH_MIN_DURATION_SECS);
+        let (r, g, b) = DOMINANT_COLOR_RGB;
+        ui.artwork_dominant_color = egui::Color32::from_rgb(r, g, b);
+        ui.artwork_edge_colors = [
+            egui::Color32::from_rgb(r, g, b),
+            egui::Color32::from_rgb(r, g, b),
+            egui::Color32::from_rgb(r, g, b),
+            egui::Color32::from_rgb(r, g, b),
+        ];
+        ui
+    }
+
+    /// Create ContentState with app state and custom page sizes (grid layout)
+    fn create_content_state(app_state: AppState) -> ContentState {
+        let mut content = ContentState::default();
+        content.app_state = app_state;
+        content.search_page_size = GRID_PAGE_SIZE;
+        content.suggestions_page_size = GRID_PAGE_SIZE;
+        content.likes_page_size = GRID_PAGE_SIZE;
+        content.playlists_page_size = GRID_PAGE_SIZE;
+        content.history_page_size = GRID_PAGE_SIZE;
+        content.home_content = HomeContent::new();
+        content
+    }
+
     /// Create a new MusicPlayerApp with shader initialized from eframe CreationContext
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
@@ -574,82 +563,108 @@ impl MusicPlayerApp {
     /// Handle keyboard shortcuts (all require Ctrl modifier to avoid interfering with text input)
     fn handle_keyboard_shortcuts(&mut self, ctx: &egui::Context) {
         ctx.input(|i| {
-            // Ctrl+Space: Play/Pause
+            // Playback controls
             if i.modifiers.ctrl && i.key_pressed(egui::Key::Space) {
-                if self.audio.is_playing {
-                    self.audio.audio_controller.pause();
-                    self.audio.is_playing = false;
-                } else if self.audio.current_track_id.is_some() {
-                    self.audio.audio_controller.resume();
-                    self.audio.is_playing = true;
-                }
+                self.handle_play_pause_shortcut();
             }
-            
-            // Ctrl+L: Toggle like (navigation Ctrl+L handled in layout.rs)
             if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::L) {
                 self.toggle_current_track_like();
             }
-            
-            // Ctrl+Shift+S: Toggle shuffle (Ctrl+S is Suggestions navigation)
+
+            // Playback mode controls
             if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::S) {
-                self.audio.shuffle_mode = !self.audio.shuffle_mode;
-                self.audio.playback_queue.set_shuffle(self.audio.shuffle_mode);
-                self.save_playback_config();
-                let msg = if self.audio.shuffle_mode { "Shuffle on" } else { "Shuffle off" };
-                self.ui.toast_manager.show_info(msg);
+                self.handle_shuffle_shortcut();
             }
-            
-            // Ctrl+Shift+R: Cycle repeat mode (Ctrl+R is Search Results navigation)
             if i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::R) {
-                use crate::app_state::RepeatMode;
-                self.audio.repeat_mode = match self.audio.repeat_mode {
-                    RepeatMode::None => RepeatMode::All,
-                    RepeatMode::All => RepeatMode::One,
-                    RepeatMode::One => RepeatMode::None,
-                };
-                self.save_playback_config();
-                let msg = match self.audio.repeat_mode {
-                    RepeatMode::None => "Repeat off",
-                    RepeatMode::All => "Repeat all",
-                    RepeatMode::One => "Repeat one",
-                };
-                self.ui.toast_manager.show_info(msg);
+                self.handle_repeat_shortcut();
             }
-            
-            // Ctrl+Arrow Up: Volume up
+
+            // Volume controls
             if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowUp) {
-                let new_volume = (self.audio.volume + 0.1).min(1.0);
-                self.audio.volume = new_volume;
-                self.audio.audio_controller.set_volume(new_volume);
-                if self.audio.muted {
-                    self.audio.muted = false;
-                    self.audio.audio_controller.set_volume(new_volume);
-                }
+                self.handle_volume_up_shortcut();
             }
-            
-            // Ctrl+Arrow Down: Volume down
             if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowDown) {
-                let new_volume = (self.audio.volume - 0.1).max(0.0);
-                self.audio.volume = new_volume;
-                self.audio.audio_controller.set_volume(new_volume);
+                self.handle_volume_down_shortcut();
             }
-            
-            // Ctrl+Arrow Right: Seek forward 10s
+
+            // Seek controls
             if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowRight) && self.audio.current_track_id.is_some() {
-                let current_pos = self.audio.audio_controller.get_position();
-                let new_pos = current_pos + Duration::from_secs(10);
-                if new_pos < Duration::from_millis(self.audio.current_duration_ms) {
-                    self.ui.seek_target_pos = Some(new_pos);
-                }
+                self.handle_seek_forward_shortcut();
             }
-            
-            // Ctrl+Arrow Left: Seek backward 10s
             if i.modifiers.ctrl && i.key_pressed(egui::Key::ArrowLeft) && self.audio.current_track_id.is_some() {
-                let current_pos = self.audio.audio_controller.get_position();
-                let new_pos = current_pos.saturating_sub(Duration::from_secs(10));
-                self.ui.seek_target_pos = Some(new_pos);
+                self.handle_seek_backward_shortcut();
             }
         });
+    }
+
+    /// Handle Ctrl+Space: Play/Pause
+    fn handle_play_pause_shortcut(&mut self) {
+        if self.audio.is_playing {
+            self.audio.audio_controller.pause();
+            self.audio.is_playing = false;
+        } else if self.audio.current_track_id.is_some() {
+            self.audio.audio_controller.resume();
+            self.audio.is_playing = true;
+        }
+    }
+
+    /// Handle Ctrl+Shift+S: Toggle shuffle
+    fn handle_shuffle_shortcut(&mut self) {
+        self.audio.shuffle_mode = !self.audio.shuffle_mode;
+        self.audio.playback_queue.set_shuffle(self.audio.shuffle_mode);
+        self.save_playback_config();
+        let msg = if self.audio.shuffle_mode { "Shuffle on" } else { "Shuffle off" };
+        self.ui.toast_manager.show_info(msg);
+    }
+
+    /// Handle Ctrl+Shift+R: Cycle repeat mode
+    fn handle_repeat_shortcut(&mut self) {
+        use crate::app_state::RepeatMode;
+        self.audio.repeat_mode = match self.audio.repeat_mode {
+            RepeatMode::None => RepeatMode::All,
+            RepeatMode::All => RepeatMode::One,
+            RepeatMode::One => RepeatMode::None,
+        };
+        self.save_playback_config();
+        let msg = match self.audio.repeat_mode {
+            RepeatMode::None => "Repeat off",
+            RepeatMode::All => "Repeat all",
+            RepeatMode::One => "Repeat one",
+        };
+        self.ui.toast_manager.show_info(msg);
+    }
+
+    /// Handle Ctrl+Arrow Up: Volume up
+    fn handle_volume_up_shortcut(&mut self) {
+        let new_volume = (self.audio.volume + VOLUME_STEP).min(1.0);
+        self.audio.volume = new_volume;
+        self.audio.audio_controller.set_volume(new_volume);
+        if self.audio.muted {
+            self.audio.muted = false;
+        }
+    }
+
+    /// Handle Ctrl+Arrow Down: Volume down
+    fn handle_volume_down_shortcut(&mut self) {
+        let new_volume = (self.audio.volume - VOLUME_STEP).max(0.0);
+        self.audio.volume = new_volume;
+        self.audio.audio_controller.set_volume(new_volume);
+    }
+
+    /// Handle Ctrl+Arrow Right: Seek forward
+    fn handle_seek_forward_shortcut(&mut self) {
+        let current_pos = self.audio.audio_controller.get_position();
+        let new_pos = current_pos + Duration::from_secs(SEEK_STEP_SECS);
+        if new_pos < Duration::from_millis(self.audio.current_duration_ms) {
+            self.ui.seek_target_pos = Some(new_pos);
+        }
+    }
+
+    /// Handle Ctrl+Arrow Left: Seek backward
+    fn handle_seek_backward_shortcut(&mut self) {
+        let current_pos = self.audio.audio_controller.get_position();
+        let new_pos = current_pos.saturating_sub(Duration::from_secs(SEEK_STEP_SECS));
+        self.ui.seek_target_pos = Some(new_pos);
     }
 
     /// Share current track (copy URL to clipboard)
@@ -761,71 +776,80 @@ impl MusicPlayerApp {
         if let Some(rx) = &self.tasks.playlist_chunk_rx {
             if let Ok(chunk_tracks) = rx.try_recv() {
                 if chunk_tracks.is_empty() {
-                    // Empty chunk signals completion
-                    log::info!("[App] Playlist loading complete");
-                    self.tasks.playlist_chunk_rx = None;
-                    self.content.playlist_loading_id = None;
+                    self.handle_playlist_complete();
                 } else {
-                    let chunk_size = chunk_tracks.len();
-                    log::info!("[App] Received chunk with {} tracks", chunk_size);
-                    
-                    // Check if queue was empty (first chunk for new playlist)
-                    let is_first_chunk = self.audio.playback_queue.original_tracks.is_empty();
-                    
-                    // Filter out non-playable tracks (geo-blocked, preview-only, non-streamable)
-                    // Note: Database tracks (streamable but no stream_url) are kept and fetched on-demand
-                    let playable_tracks: Vec<_> = chunk_tracks.into_iter()
-                        .filter(|t| {
-                            // Keep streamable tracks
-                            if !t.streamable.unwrap_or(false) {
-                                return false;
-                            }
-                            
-                            // Filter geo-blocked tracks
-                            if let Some(policy) = &t.policy {
-                                if policy.to_uppercase() == "BLOCK" {
-                                    log::debug!("[Chunk] Filtering geo-locked: {}", t.title);
-                                    return false;
-                                }
-                            }
-                            
-                            // Filter preview-only/blocked tracks
-                            if let Some(access) = &t.access {
-                                let access_lower = access.to_lowercase();
-                                if access_lower == "blocked" || access_lower == "preview" {
-                                    log::debug!("[Chunk] Filtering restricted access: {}", t.title);
-                                    return false;
-                                }
-                            }
-                            
-                            true
-                        })
-                        .collect();
-                    
-                    if !playable_tracks.is_empty() {
-                        let filtered_count = playable_tracks.len();
-                        if filtered_count < chunk_size {
-                            log::info!("[App] Filtered {} → {} playable tracks", 
-                                       chunk_size, filtered_count);
-                        }
-                        
-                        // Append tracks to existing queue
-                        self.audio.playback_queue.append_tracks(playable_tracks.clone());
-                        log::info!("[App] Added {} tracks to queue (total: {})", 
-                                   filtered_count, 
-                                   self.audio.playback_queue.original_tracks.len());
-                        
-                        // If this was the first chunk, start playback
-                        if is_first_chunk {
-                            if let Some(first_track) = self.audio.playback_queue.current_track() {
-                                let track_id = first_track.id;
-                                log::info!("[App] Starting playback with first chunk");
-                                self.play_track(track_id);
-                            }
-                        }
-                    }
+                    self.handle_playlist_chunk(chunk_tracks);
                 }
             }
+        }
+    }
+
+    /// Handle playlist loading completion
+    fn handle_playlist_complete(&mut self) {
+        log::info!("[App] Playlist loading complete");
+        self.tasks.playlist_chunk_rx = None;
+        self.content.playlist_loading_id = None;
+    }
+
+    /// Handle incoming playlist chunk
+    fn handle_playlist_chunk(&mut self, chunk_tracks: Vec<crate::app::playlists::Track>) {
+        let chunk_size = chunk_tracks.len();
+        log::info!("[App] Received chunk with {} tracks", chunk_size);
+
+        let is_first_chunk = self.audio.playback_queue.original_tracks.is_empty();
+        let playable_tracks = Self::filter_playable_tracks(chunk_tracks);
+
+        if !playable_tracks.is_empty() {
+            let filtered_count = playable_tracks.len();
+            if filtered_count < chunk_size {
+                log::info!("[App] Filtered {} → {} playable tracks", chunk_size, filtered_count);
+            }
+
+            self.audio.playback_queue.append_tracks(playable_tracks.clone());
+            log::info!("[App] Added {} tracks to queue (total: {})",
+                       filtered_count,
+                       self.audio.playback_queue.original_tracks.len());
+
+            if is_first_chunk {
+                self.start_first_chunk_playback();
+            }
+        }
+    }
+
+    /// Filter out non-playable tracks (geo-blocked, preview-only, non-streamable)
+    fn filter_playable_tracks(tracks: Vec<crate::app::playlists::Track>) -> Vec<crate::app::playlists::Track> {
+        tracks.into_iter()
+            .filter(|t| {
+                if !t.streamable.unwrap_or(false) {
+                    return false;
+                }
+
+                if let Some(policy) = &t.policy {
+                    if policy.to_uppercase() == "BLOCK" {
+                        log::debug!("[Chunk] Filtering geo-locked: {}", t.title);
+                        return false;
+                    }
+                }
+
+                if let Some(access) = &t.access {
+                    let access_lower = access.to_lowercase();
+                    if access_lower == "blocked" || access_lower == "preview" {
+                        log::debug!("[Chunk] Filtering restricted access: {}", t.title);
+                        return false;
+                    }
+                }
+
+                true
+            })
+            .collect()
+    }
+
+    /// Start playback with first track from first chunk
+    fn start_first_chunk_playback(&mut self) {
+        if let Some(first_track) = self.audio.playback_queue.current_track() {
+            let track_id = first_track.id;
+            log::info!("[App] Starting playback with first chunk");
+            self.play_track(track_id);
         }
     }
 
@@ -868,9 +892,9 @@ impl MusicPlayerApp {
                 return;
             }
             
-            // Prevent race condition: don't treat as finished if track just started (< 1 second ago)
+            // Prevent race condition: don't treat as finished if track just started
             if let Some(start_time) = self.audio.track_start_time {
-                if start_time.elapsed() < Duration::from_secs(1) {
+                if start_time.elapsed() < Duration::from_secs(MIN_TRACK_ELAPSED_SECS) {
                     return;
                 }
             }
@@ -1086,7 +1110,7 @@ impl MusicPlayerApp {
                 }
                 
                 // Store recommendations (max 6)
-                self.content.home_content.recommendations = tracks.into_iter().take(6).collect();
+                self.content.home_content.recommendations = tracks.into_iter().take(HOME_RECOMMENDATIONS_LIMIT).collect();
                 self.content.home_recommendations_loading = false;
                 self.tasks.home_recommendations_rx = None;
             }
@@ -1155,7 +1179,7 @@ impl MusicPlayerApp {
         
         // Fetch directly from database - no queue needed
         let token = self.auth.oauth_manager.as_ref()
-            .and_then(|oauth| crate::utils::token_helper::get_valid_token_sync(oauth))
+            .and_then(crate::utils::token_helper::get_valid_token_sync)
             .map(|t| t.access_token.clone())
             .unwrap_or_default();
         crate::app::home::fetch_recently_played_async(token, tx);
@@ -1197,7 +1221,7 @@ impl MusicPlayerApp {
         
         // Fetch directly from database - no queue needed
         let token = self.auth.oauth_manager.as_ref()
-            .and_then(|oauth| crate::utils::token_helper::get_valid_token_sync(oauth))
+            .and_then(crate::utils::token_helper::get_valid_token_sync)
             .map(|t| t.access_token.clone())
             .unwrap_or_default();
         crate::app::home::fetch_recently_played_async(token, tx);
@@ -1271,7 +1295,7 @@ impl MusicPlayerApp {
                 let user_tracks = self.content.user_tracks.clone();
 
                 // Get history records upfront (can't clone PlaybackHistoryDB)
-                let history_records = self.content.playback_history.get_recent_tracks(50);
+                let _history_records = self.content.playback_history.get_recent_tracks(50);
 
                 std::thread::spawn(move || {
                     let rt = match crate::utils::error_handling::create_runtime() {
@@ -1311,7 +1335,7 @@ impl MusicPlayerApp {
 
                         // Source 2: Liked tracks (secondary - add some variety)
                         log::info!("[Suggestions] Adding from {} liked tracks...", likes_tracks.len());
-                        for track in likes_tracks.iter().take(30) {
+                        for track in likes_tracks.iter().take(SUGGESTIONS_LIKES_LIMIT) {
                             if seen_ids.insert(track.id) {
                                 all_suggestions.push(track.clone());
                             }
@@ -1319,7 +1343,7 @@ impl MusicPlayerApp {
 
                         // Source 3: User uploaded tracks
                         log::info!("[Suggestions] Adding from {} user tracks...", user_tracks.len());
-                        for track in user_tracks.iter().take(20) {
+                        for track in user_tracks.iter().take(SUGGESTIONS_USER_TRACKS_LIMIT) {
                             if seen_ids.insert(track.id) {
                                 all_suggestions.push(track.clone());
                             }
@@ -1715,18 +1739,17 @@ impl MusicPlayerApp {
 impl eframe::App for MusicPlayerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // Request repaint with 120 FPS cap (8.33ms per frame) for smooth shader animation
-        ctx.request_repaint_after(std::time::Duration::from_micros(8333));
+        ctx.request_repaint_after(Duration::from_micros(REPAINT_INTERVAL_MICROS));
 
         // Check for shader hot-reload (delegated to ShaderManager)
         self.ui.shader_manager.check_hot_reload();
 
         // Handle close request - cleanup and exit immediately
-        if ctx.input(|i| i.viewport().close_requested()) {
-            if !self.ui.is_shutting_down {
+        if ctx.input(|i| i.viewport().close_requested())
+            && !self.ui.is_shutting_down {
                 self.ui.is_shutting_down = true;
                 self.cleanup_and_exit(ctx, frame);
             }
-        }
         // Handle OAuth authentication flow and token validation
         if matches!(self.ui.screen, AppScreen::Splash) {
             // Check for existing valid token (only once per session)
@@ -1759,7 +1782,7 @@ impl eframe::App for MusicPlayerApp {
                     
                     if elapsed < min_duration {
                         // Not enough time has passed, request repaint to check again soon
-                        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                        ctx.request_repaint_after(Duration::from_millis(SPLASH_CHECK_INTERVAL_MILLIS));
                         false
                     } else {
                         debug!("[Splash] Timer check - elapsed: {:?}, minimum: {:?}", elapsed, min_duration);

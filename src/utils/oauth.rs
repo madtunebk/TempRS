@@ -20,7 +20,7 @@ fn generate_pkce_pair() -> (String, String) {
     
     // Combine random bytes with machine fingerprint
     let combined = format!("{}{}", 
-        URL_SAFE_NO_PAD.encode(&random_bytes),
+        URL_SAFE_NO_PAD.encode(random_bytes),
         machine_fp
     );
 

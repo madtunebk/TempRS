@@ -97,7 +97,7 @@ impl AppState {
     
     /// Check if user is authenticated
     pub fn is_authenticated(&self) -> bool {
-        self.inner.read().ok().map_or(false, |s| s.is_authenticated)
+        self.inner.read().ok().is_some_and(|s| s.is_authenticated)
     }
     
     /// Get app version
@@ -136,7 +136,7 @@ impl AppState {
     }
     
     pub fn is_muted(&self) -> bool {
-        self.inner.read().ok().map_or(false, |s| s.muted)
+        self.inner.read().ok().is_some_and(|s| s.muted)
     }
     
     pub fn set_shuffle_mode(&self, shuffle: bool) {
@@ -146,7 +146,7 @@ impl AppState {
     }
     
     pub fn get_shuffle_mode(&self) -> bool {
-        self.inner.read().ok().map_or(false, |s| s.shuffle_mode)
+        self.inner.read().ok().is_some_and(|s| s.shuffle_mode)
     }
     
     pub fn set_repeat_mode(&self, mode: RepeatMode) {

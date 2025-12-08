@@ -80,7 +80,7 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             }
             
             // Calculate pagination
-            let _total_pages = (app.content.history_total_tracks + app.content.history_page_size - 1) / app.content.history_page_size;
+            let _total_pages = app.content.history_total_tracks.div_ceil(app.content.history_page_size);
             let offset = app.content.history_page * app.content.history_page_size;
             
             // Get current page of history from database
@@ -99,7 +99,7 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                     } else {
                         record.title.to_lowercase().contains(&filter_text) ||
                         record.artist.to_lowercase().contains(&filter_text) ||
-                        record.genre.as_ref().map_or(false, |g| g.to_lowercase().contains(&filter_text))
+                        record.genre.as_ref().is_some_and(|g| g.to_lowercase().contains(&filter_text))
                     }
                 })
                 .map(|record| Track {
@@ -216,7 +216,7 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                     );
                     ui.add_space(8.0);
                     ui.label(
-                        egui::RichText::new(format!("Try a different search term or clear the filter"))
+                        egui::RichText::new("Try a different search term or clear the filter".to_string())
                             .size(13.0)
                             .color(Color32::GRAY),
                     );

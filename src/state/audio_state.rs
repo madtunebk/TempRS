@@ -72,16 +72,19 @@ impl Default for AudioState {
 
 impl AudioState {
     /// Get current playback position
+    #[allow(dead_code)]
     pub fn get_position(&self) -> std::time::Duration {
         self.audio_controller.get_position()
     }
 
     /// Get track duration
+    #[allow(dead_code)]
     pub fn get_duration(&self) -> Option<std::time::Duration> {
         self.audio_controller.get_duration()
     }
 
     /// Check if track has finished
+    #[allow(dead_code)]
     pub fn is_finished(&self) -> bool {
         self.audio_controller.is_finished()
     }

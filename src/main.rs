@@ -9,6 +9,7 @@ mod api;
 mod data;
 mod services;
 mod state;
+mod constants;
 
 use eframe::egui;
 use app::MusicPlayerApp;

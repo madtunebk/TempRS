@@ -44,8 +44,11 @@ pub struct UIState {
     pub thumb_pending: HashMap<String, bool>,
 
     // Ambient Glow & Audio Reactivity
+    #[allow(dead_code)]
     pub glow_intensity: f32,
+    #[allow(dead_code)]
     pub glow_smooth_intensity: f32,
+    #[allow(dead_code)]
     pub last_frame_time: Option<Instant>,
     pub audio_amplitude: f32,  // Real-time audio level (0.0-1.0) for reactive visuals
 
@@ -57,6 +60,7 @@ pub struct UIState {
 
     // UI Controls
     pub show_volume_popup: bool,
+    #[allow(dead_code)]
     pub show_exit_confirmation: bool,
     pub is_shutting_down: bool,
     pub is_seeking: bool,
@@ -102,6 +106,7 @@ impl Default for UIState {
 
 impl UIState {
     /// Check if splash screen should still be shown
+    #[allow(dead_code)]
     pub fn is_splash_active(&self) -> bool {
         if let Some(start) = self.splash_start_time {
             start.elapsed() < self.splash_min_duration
@@ -111,17 +116,20 @@ impl UIState {
     }
 
     /// Transition from splash to main screen
+    #[allow(dead_code)]
     pub fn transition_to_main(&mut self) {
         self.screen = AppScreen::Main;
         self.splash_start_time = None;
     }
 
     /// Update audio amplitude for reactive visuals
+    #[allow(dead_code)]
     pub fn update_audio_amplitude(&mut self, bass_energy: f32) {
         self.audio_amplitude = bass_energy;
     }
 
     /// Update glow intensity with smoothing
+    #[allow(dead_code)]
     pub fn update_glow(&mut self, target_intensity: f32, delta_time: f32) {
         let smooth_speed = 3.0;
         self.glow_smooth_intensity += (target_intensity - self.glow_smooth_intensity)

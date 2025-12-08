@@ -387,7 +387,7 @@ pub fn render_pagination_controls(
     total_items: usize,
     page_size: usize,
 ) -> bool {
-    let total_pages = (total_items + page_size - 1) / page_size;
+    let total_pages = total_items.div_ceil(page_size);
     
     if total_pages <= 1 {
         return false;

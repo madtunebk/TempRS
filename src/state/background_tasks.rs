@@ -8,6 +8,7 @@ pub struct SearchResults {
     pub next_href: Option<String>,
 }
 
+#[derive(Default)]
 pub struct BackgroundTasks {
     // Search Results
     pub search_rx: Option<Receiver<SearchResults>>,
@@ -38,27 +39,10 @@ pub struct BackgroundTasks {
     pub artwork_rx: Option<Receiver<ColorImage>>,
 }
 
-impl Default for BackgroundTasks {
-    fn default() -> Self {
-        Self {
-            search_rx: None,
-            playlist_rx: None,
-            playlist_chunk_rx: None,
-            home_recently_played_rx: None,
-            home_recommendations_rx: None,
-            track_fetch_rx: None,
-            suggestions_rx: None,
-            likes_tracks_rx: None,
-            user_tracks_rx: None,
-            playlists_rx: None,
-            user_avatar_rx: None,
-            artwork_rx: None,
-        }
-    }
-}
 
 impl BackgroundTasks {
     /// Check if any background task is active
+    #[allow(dead_code)]
     pub fn has_active_tasks(&self) -> bool {
         self.search_rx.is_some()
             || self.playlist_rx.is_some()

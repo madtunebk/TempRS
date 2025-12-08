@@ -266,16 +266,18 @@ impl ShaderManager {
     }
     
     /// Get multi-pass shader if available
+    #[allow(dead_code)]
     pub fn multi_pass(&self) -> Option<Arc<MultiPassPipelines>> {
         self.multi_pass_shader.as_ref().map(Arc::clone)
     }
-    
+
     /// Get splash shader if available
     pub fn splash(&self) -> Option<Arc<ShaderPipeline>> {
         self.splash_shader.as_ref().map(Arc::clone)
     }
-    
+
     /// Get track metadata shader if available
+    #[allow(dead_code)]
     pub fn track_metadata(&self) -> Option<Arc<ShaderPipeline>> {
         self.track_metadata_shader.as_ref().map(Arc::clone)
     }

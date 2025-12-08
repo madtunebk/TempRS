@@ -119,6 +119,7 @@ pub struct MultiPassPipelines {
 }
 
 impl MultiPassPipelines {
+    #[allow(dead_code)]
     pub fn new(
         device: &Device,
         queue: &eframe::wgpu::Queue,
@@ -935,7 +936,7 @@ impl eframe::egui_wgpu::CallbackTrait for MultiPassCallback {
 
         // Debug log every 60 frames (about once per second at 60fps)
         static FRAME_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        if FRAME_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 60 == 0 {
+        if FRAME_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).is_multiple_of(60) {
             log::debug!("Uniforms: gamma={:.2}, contrast={:.2}, saturation={:.2}", gamma, contrast, saturation);
         }
 

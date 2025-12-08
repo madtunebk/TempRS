@@ -25,6 +25,7 @@ pub type AsyncTask<T> = Pin<Box<dyn Future<Output = AsyncTaskResult<T>> + Send +
 ///     })
 /// });
 /// ```
+#[allow(dead_code)]
 pub fn spawn_api_task<F, T>(task_factory: F) -> JoinHandle<AsyncTaskResult<T>>
 where
     F: FnOnce() -> AsyncTask<T> + Send + 'static,
@@ -59,6 +60,7 @@ where
 /// );
 /// // Later: let result = rx.recv();
 /// ```
+#[allow(dead_code)]
 pub fn spawn_and_send<F, T>(
     task_factory: F,
     tx: std::sync::mpsc::Sender<AsyncTaskResult<T>>,

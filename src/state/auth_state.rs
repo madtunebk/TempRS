@@ -11,6 +11,7 @@ pub struct AuthState {
     pub user_avatar_url: Option<String>,
     pub user_avatar_texture: Option<egui::TextureHandle>,
     pub user_username: Option<String>,
+    #[allow(dead_code)]
     pub show_user_menu: bool,
     pub last_token_check: Option<Instant>,
     pub token_check_interval: Duration,
@@ -44,6 +45,7 @@ impl Default for AuthState {
 
 impl AuthState {
     /// Check if user is authenticated (has valid token)
+    #[allow(dead_code)]
     pub fn is_authenticated(&self) -> bool {
         if let Some(oauth) = &self.oauth_manager {
             if let Some(token_data) = oauth.get_token() {
@@ -58,6 +60,7 @@ impl AuthState {
     }
 
     /// Get current access token if valid
+    #[allow(dead_code)]
     pub fn get_token(&self) -> Option<String> {
         if let Some(oauth) = &self.oauth_manager {
             if let Some(token_data) = oauth.get_token() {

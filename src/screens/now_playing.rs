@@ -55,7 +55,7 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
         }
         
         // No overlay - use text shadows instead for readability
-        render_track_details(app, ui, &current_track);
+        render_track_details(app, ui, current_track);
     } else {
         // Fallback: use stored current track info
         render_fallback_view(app, ui);

@@ -100,7 +100,7 @@ fn render_liked_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::
         all_tracks_with_badges.retain(|(track, _)| {
             track.title.to_lowercase().contains(&filter_text) ||
             track.user.username.to_lowercase().contains(&filter_text) ||
-            track.genre.as_ref().map_or(false, |g| g.to_lowercase().contains(&filter_text))
+            track.genre.as_ref().is_some_and(|g| g.to_lowercase().contains(&filter_text))
         });
     }
 
@@ -162,7 +162,7 @@ fn render_liked_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::
         ui.label(egui::RichText::new("Sort:").size(14.0).color(egui::Color32::GRAY));
         ui.add_space(5.0);
 
-        egui::ComboBox::from_id_source("likes_sort")
+        egui::ComboBox::from_id_salt("likes_sort")
             .selected_text(match app.content.likes_sort_order {
                 crate::app::player_app::LikesSortOrder::RecentFirst => "Recent First",
                 crate::app::player_app::LikesSortOrder::TitleAZ => "Title (A-Z)",

@@ -157,11 +157,13 @@ impl Default for ContentState {
 
 impl ContentState {
     /// Check if a track is liked
+    #[allow(dead_code)]
     pub fn is_track_liked(&self, track_id: u64) -> bool {
         self.liked_track_ids.contains(&track_id)
     }
 
     /// Check if a playlist is liked
+    #[allow(dead_code)]
     pub fn is_playlist_liked(&self, playlist_id: u64) -> bool {
         self.liked_playlist_ids.contains(&playlist_id)
     }

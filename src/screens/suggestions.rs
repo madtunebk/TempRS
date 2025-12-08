@@ -94,7 +94,7 @@ pub fn render_suggestions_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 filtered_tracks.retain(|track| {
                     track.title.to_lowercase().contains(&filter_text) ||
                     track.user.username.to_lowercase().contains(&filter_text) ||
-                    track.genre.as_ref().map_or(false, |g| g.to_lowercase().contains(&filter_text))
+                    track.genre.as_ref().is_some_and(|g| g.to_lowercase().contains(&filter_text))
                 });
             }
 
@@ -160,7 +160,7 @@ pub fn render_suggestions_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 ui.label(egui::RichText::new("Sort:").size(14.0).color(egui::Color32::GRAY));
                 ui.add_space(5.0);
 
-                let sort_response = egui::ComboBox::from_id_source("suggestions_sort")
+                let sort_response = egui::ComboBox::from_id_salt("suggestions_sort")
                     .selected_text(match app.content.suggestions_sort_order {
                         crate::app::player_app::SuggestionsSortOrder::Default => "Default",
                         crate::app::player_app::SuggestionsSortOrder::TitleAZ => "Title (A-Z)",

@@ -399,7 +399,7 @@ pub fn clear_all_cache() -> Result<(), std::io::Error> {
 pub fn cleanup_old_cache_db(days: u64) -> Result<(), std::io::Error> {
     if let Ok(db) = CacheDB::new() {
         db.cleanup_old_entries(days)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
     }
     Ok(())
 }

@@ -148,7 +148,7 @@ fn render_playlists(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Con
         ui.label(egui::RichText::new("Sort:").size(14.0).color(egui::Color32::GRAY));
         ui.add_space(5.0);
 
-        egui::ComboBox::from_id_source("playlists_sort")
+        egui::ComboBox::from_id_salt("playlists_sort")
             .selected_text(match app.content.playlists_sort_order {
                 crate::app::player_app::PlaylistsSortOrder::RecentFirst => "Recent First",
                 crate::app::player_app::PlaylistsSortOrder::NameAZ => "Name (A-Z)",

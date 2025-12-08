@@ -7,6 +7,7 @@ pub struct Track {
     pub id: u64,
     pub title: String,
     pub duration: u64,
+    pub full_duration: Option<u64>, // Full uncut duration (may differ from duration for long tracks)
     pub stream_url: Option<String>,
     pub permalink_url: Option<String>,
     pub artwork_url: Option<String>,

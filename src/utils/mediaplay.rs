@@ -257,8 +257,12 @@ impl AudioPlayer {
         
         // Convert track duration from milliseconds to Duration
         let total_duration = if duration_ms > 0 {
-            Some(Duration::from_millis(duration_ms))
+            let dur = Duration::from_millis(duration_ms);
+            log::info!("[AudioPlayer] Track duration set: {}ms = {} seconds ({} minutes)", 
+                duration_ms, dur.as_secs(), dur.as_secs() / 60);
+            Some(dur)
         } else {
+            log::warn!("[AudioPlayer] Track has zero/invalid duration: {}ms", duration_ms);
             None
         };
         

@@ -105,6 +105,7 @@ mod tests {
             access,
             artwork_url: None,
             duration: 180000,
+            full_duration: None,
             genre: Some("Electronic".to_string()),
             permalink_url: Some("https://soundcloud.com/test".to_string()),
             playback_count: Some(1000),

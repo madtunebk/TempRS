@@ -67,6 +67,7 @@ pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
                             artwork_url: None, // Will be fetched from API when needed
                             permalink_url: None,
                             duration: record.duration,
+                            full_duration: None,  // Not stored in history DB
                             genre: record.genre,
                             streamable: Some(true), // Assumed from history, but will be validated
                             stream_url: None, // Will be fetched fresh from API when needed

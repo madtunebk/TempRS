@@ -111,6 +111,7 @@ pub fn render_history_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                         avatar_url: None,
                     },
                     duration: record.duration,
+                    full_duration: None,  // Not stored in history DB
                     genre: record.genre.clone(),
                     artwork_url: None, // Will try cache by track_id
                     permalink_url: None,

@@ -66,7 +66,10 @@ impl AudioController {
                 while let Ok(cmd) = command_rx.try_recv() {
                     match cmd {
                         AudioCommand::Play { url, token, track_id, duration_ms } => {
-                            log::debug!("[AudioController] Received Play command for track {} (duration: {}ms)", track_id, duration_ms);
+                            let duration_secs = duration_ms / 1000;
+                            let duration_mins = duration_secs / 60;
+                            log::info!("[AudioController] Received Play command for track {} (duration: {}ms = {}:{:02})", 
+                                track_id, duration_ms, duration_mins, duration_secs % 60);
 
                             // Reset finished flag BEFORE loading new track
                             if let Some(mut lock) = crate::utils::error_handling::safe_lock(&is_finished_clone, "AudioController") {

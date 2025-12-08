@@ -247,9 +247,21 @@ impl MusicPlayerApp {
         self.audio.current_title = track.title.clone();
         self.audio.current_artist = track.user.username.clone();
         self.audio.current_genre = track.genre.clone();
-        self.audio.current_duration_ms = track.duration;
+        
+        // Use full_duration if available (for long tracks), otherwise duration
+        let actual_duration = track.full_duration.unwrap_or(track.duration);
+        self.audio.current_duration_ms = actual_duration;
         self.audio.current_stream_url = track.stream_url.clone();
         self.audio.current_permalink_url = track.permalink_url.clone();
+        
+        // Debug logging for duration (especially for long tracks)
+        if track.full_duration.is_some() && track.full_duration != Some(track.duration) {
+            log::warn!("[Track] Duration mismatch - duration: {}ms, full_duration: {}ms (using full_duration)", 
+                track.duration, track.full_duration.unwrap());
+        }
+        let duration_minutes = actual_duration / 1000 / 60;
+        log::info!("[Track] Duration from API: {}ms ({} minutes, {} seconds)", 
+            actual_duration, duration_minutes, (actual_duration / 1000) % 60);
         
         // Fetch artwork if available, otherwise clear old artwork
         if let Some(url) = artwork_url {
@@ -1105,6 +1117,7 @@ impl MusicPlayerApp {
                                 avatar_url: None,
                             },
                             duration: record.duration,
+                            full_duration: None,  // Not stored in history DB
                             genre: record.genre.clone(),
                             artwork_url: None,
                             permalink_url: None,
@@ -1241,6 +1254,7 @@ impl MusicPlayerApp {
                             avatar_url: None,
                         },
                         duration: record.duration,
+                        full_duration: None,  // Not stored in history DB
                         genre: record.genre.clone(),
                         artwork_url: None,
                         permalink_url: None,

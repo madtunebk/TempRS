@@ -13,7 +13,6 @@ base64 = "0.22.1"
 rand = "0.9.2"
 sha2 = "0.10"
 rusqlite = { version = "0.32", features = ["bundled"] }
-openssl = { version = "0.10", features = ["vendored"] }
 aes-gcm = "0.10"
 eframe = { version = "0.33", features = ["wgpu"] }
 egui = "0.33"
@@ -21,7 +20,7 @@ image = "0.25"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dirs = "5.0"
-reqwest = { version = "0.12", features = ["json", "blocking", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking", "stream"] }
 urlencoding = "2.1"
 tokio = { version = "1.43", features = ["full"] }
 tiny_http = "0.12"
@@ -38,6 +37,10 @@ arboard = "3.4"
 rustfft = "6.2"
 dotenvy = "0.15.7"
 naga = { version = "27", features = ["wgsl-in"] }
+
+
+#[target.'cfg(linux)'.dependencies]
+#openssl = { version = "0.10", features = ["vendored"]} 
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55.0"
@@ -67,3 +70,10 @@ test-bins = []
 
 [build-dependencies]
 dotenvy = "0.15"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false

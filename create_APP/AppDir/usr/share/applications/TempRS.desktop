@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=TempRS
+Exec=TempRS
+Icon=TempRS
+Categories=AudioVideo;Player;Music;Utility;
+Terminal=false

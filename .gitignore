@@ -60,5 +60,9 @@ prebuild_backups/
 .temprs/
 
 # === Refactoring backups ===
-.tempbackup/
-TEMPEDITOR
+STAGESREFRACTOR
+create_app
+
+# === AppImage builds ===
+*.AppImage
+APPIMAGE_BUILD.md

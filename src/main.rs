@@ -36,12 +36,26 @@ fn main() -> Result<(), eframe::Error> {
         .filter_module("wgpu_hal", log::LevelFilter::Warn)
         .filter_module("naga", log::LevelFilter::Warn)
         .init();
-    
+
     log::info!("[Main] Starting {} v{}", APP_NAME, APP_VERSION);
-    
+
+    // Detect GPU and decide rendering backend
+    let (use_gpu, gpu_info) = should_use_gpu();
+    log::info!("[Main] GPU Detection Result: {} | Using: {}",
+        gpu_info,
+        if use_gpu { "WGPU (GPU)" } else { "GLOW (CPU)" }
+    );
+
+    // Log performance settings based on renderer type
+    if use_gpu {
+        log::info!("[Main] GPU mode: FPS set to 120, FFT enabled for shaders");
+    } else {
+        log::info!("[Main] CPU mode: FPS limited to 60, FFT disabled");
+    }
+
     // Load app icon (music note emoji as fallback)
     let icon_data = load_icon();
-    
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(format!("{} v{} - {}", APP_NAME, APP_VERSION, APP_DESCRIPTION))
@@ -54,7 +68,11 @@ fn main() -> Result<(), eframe::Error> {
             .with_icon(icon_data),
         vsync: false,                             // Disable vsync for higher FPS
         persist_window: true,                     // Remember window position
-        renderer: eframe::Renderer::Wgpu,
+        renderer: if use_gpu {
+            eframe::Renderer::Wgpu  // GPU-accelerated with shader support
+        } else {
+            eframe::Renderer::Glow  // CPU rendering, no shader overhead
+        },
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             present_mode: eframe::egui_wgpu::wgpu::PresentMode::Fifo,
             ..Default::default()
@@ -65,10 +83,10 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         &format!("{} v{}", APP_NAME, APP_VERSION),
         options,
-        Box::new(|cc| {
+        Box::new(move |cc| {
             // Load emoji font for consistent cross-platform icon rendering
             setup_custom_fonts(&cc.egui_ctx);
-            Ok(Box::new(MusicPlayerApp::new(cc)))
+            Ok(Box::new(MusicPlayerApp::new(cc, use_gpu)))
         }),
     )
 }
@@ -181,6 +199,78 @@ fn setup_custom_fonts(ctx: &egui::Context) {
     
     ctx.set_fonts(fonts);
     log::info!("[Main] Custom fonts loaded: JetBrains Mono + Noto Emoji");
+}
+
+/// Detect best GPU available and decide whether to use GPU or CPU rendering
+/// Returns (use_gpu: bool, gpu_info: String)
+fn should_use_gpu() -> (bool, String) {
+    use eframe::egui_wgpu::wgpu;
+
+    // Try to create wgpu instance to enumerate adapters
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::all(),
+        ..Default::default()
+    });
+
+    let adapters = instance.enumerate_adapters(wgpu::Backends::all());
+    let adapter_count = adapters.len();
+
+    log::info!("[GPU] Scanning {} adapter(s)...", adapter_count);
+
+    if adapter_count == 0 {
+        log::warn!("[GPU] No GPU found - using CPU rendering");
+        return (false, "No GPU found".to_string());
+    }
+
+    let mut has_discrete = false;
+    let mut has_integrated = false;
+    let mut discrete_name = String::new();
+    let mut integrated_name = String::new();
+
+    // Scan all adapters
+    for adapter in &adapters {
+        let info = adapter.get_info();
+        log::info!(
+            "[GPU] Found: {} | Type: {:?} | Backend: {:?}",
+            info.name,
+            info.device_type,
+            info.backend
+        );
+
+        match info.device_type {
+            wgpu::DeviceType::DiscreteGpu => {
+                has_discrete = true;
+                discrete_name = info.name.clone();
+                log::info!("[GPU] ✓ Dedicated GPU detected: {}", info.name);
+            }
+            wgpu::DeviceType::IntegratedGpu => {
+                has_integrated = true;
+                integrated_name = info.name.clone();
+                log::info!("[GPU] ⚠ Integrated GPU detected: {}", info.name);
+            }
+            wgpu::DeviceType::VirtualGpu => {
+                log::warn!("[GPU] Virtual GPU detected (VM?): {}", info.name);
+            }
+            wgpu::DeviceType::Cpu => {
+                log::warn!("[GPU] Software renderer detected: {}", info.name);
+            }
+            _ => {}
+        }
+    }
+
+    // Decision logic: Discrete > CPU (avoid iGPU burning CPU)
+    if has_discrete {
+        log::info!("[GPU] Using HighPerformance mode (dedicated GPU)");
+        (true, format!("{} (Dedicated)", discrete_name))
+    } else if has_integrated {
+        log::warn!("[GPU] Only integrated GPU available");
+        log::warn!("[GPU] Using CPU rendering to prevent high CPU usage from iGPU");
+        log::warn!("[GPU] Shaders will be disabled");
+        (false, format!("{} (iGPU - disabled to save CPU)", integrated_name))
+    } else {
+        log::warn!("[GPU] No dedicated/integrated GPU found - using CPU rendering");
+        (false, "No suitable GPU".to_string())
+    }
 }
 
 #[allow(dead_code)]

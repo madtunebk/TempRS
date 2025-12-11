@@ -25,6 +25,9 @@ struct AppStateInner {
     pub muted: bool,
     pub shuffle_mode: bool,
     pub repeat_mode: RepeatMode,
+
+    /// Renderer type (GPU or CPU) - determines FPS and FFT usage
+    pub renderer_type: RendererType,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -32,6 +35,12 @@ pub enum RepeatMode {
     None,
     One,
     All,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RendererType {
+    Gpu,  // WGPU renderer with shader support
+    Cpu,  // GLOW renderer without shaders
 }
 
 #[allow(dead_code)]
@@ -47,6 +56,7 @@ impl AppState {
                 muted: false,
                 shuffle_mode: false,
                 repeat_mode: RepeatMode::None,
+                renderer_type: RendererType::Gpu, // Default to GPU, updated at startup
             })),
         }
     }
@@ -158,7 +168,17 @@ impl AppState {
     pub fn get_repeat_mode(&self) -> RepeatMode {
         self.inner.read().ok().map_or(RepeatMode::None, |s| s.repeat_mode)
     }
-    
+
+    pub fn set_renderer_type(&self, renderer_type: RendererType) {
+        if let Ok(mut state) = self.inner.write() {
+            state.renderer_type = renderer_type;
+        }
+    }
+
+    pub fn get_renderer_type(&self) -> RendererType {
+        self.inner.read().ok().map_or(RendererType::Gpu, |s| s.renderer_type)
+    }
+
     /// Get access token from database
     pub fn get_token(&self) -> Option<String> {
         let token_store = crate::utils::token_store::TokenStore::new();

@@ -102,6 +102,15 @@ fn render_track_item(
         super::draw_no_artwork(app, ui, artwork_rect);
     }
 
+    // Add like button overlay (top-left corner)
+    let (_like_clicked, _share_clicked) = crate::ui_components::helpers::render_social_buttons(
+        app,
+        ui,
+        artwork_rect,
+        track.id,
+        track.permalink_url.as_ref(),
+    );
+
     if response.hovered() {
         ui.painter().rect_filled(
             artwork_rect,

@@ -22,6 +22,7 @@ pub struct AudioState {
     pub track_start_time: Option<Instant>,
 
     // Real-time FFT Analysis (3 fields)
+    // In CPU mode, these are dummy values (always 0) to avoid breaking shader pipeline
     pub bass_energy: Arc<AtomicU32>,
     pub mid_energy: Arc<AtomicU32>,
     pub high_energy: Arc<AtomicU32>,
@@ -37,15 +38,25 @@ pub struct AudioState {
 
 impl Default for AudioState {
     fn default() -> Self {
+        // By default, create without FFT (will be initialized later based on renderer type)
+        Self::new(false)
+    }
+}
+
+impl AudioState {
+    /// Create new AudioState with optional FFT support
+    /// enable_fft: true for GPU mode (shaders need FFT), false for CPU mode
+    /// In CPU mode, FFT atomics are created but never updated (always 0)
+    pub fn new(enable_fft: bool) -> Self {
         let bass_energy = Arc::new(AtomicU32::new(0));
         let mid_energy = Arc::new(AtomicU32::new(0));
         let high_energy = Arc::new(AtomicU32::new(0));
 
         Self {
             audio_controller: AudioController::new(
-                Arc::clone(&bass_energy),
-                Arc::clone(&mid_energy),
-                Arc::clone(&high_energy),
+                if enable_fft { Some(Arc::clone(&bass_energy)) } else { None },
+                if enable_fft { Some(Arc::clone(&mid_energy)) } else { None },
+                if enable_fft { Some(Arc::clone(&high_energy)) } else { None },
             ),
             playback_queue: PlaybackQueue::new(),
             current_track_id: None,
@@ -68,9 +79,7 @@ impl Default for AudioState {
             volume_before_mute: 1.0,
         }
     }
-}
 
-impl AudioState {
     /// Get current playback position
     #[allow(dead_code)]
     pub fn get_position(&self) -> std::time::Duration {

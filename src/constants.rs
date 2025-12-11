@@ -4,7 +4,10 @@
 pub const GRID_PAGE_SIZE: usize = 12;
 pub const SPLASH_MIN_DURATION_SECS: u64 = 2;
 pub const SPLASH_CHECK_INTERVAL_MILLIS: u64 = 100;
-pub const REPAINT_INTERVAL_MICROS: u64 = 8333; // 120 FPS (8.33ms per frame)
+
+// Frame rate settings (performance optimization based on renderer)
+pub const REPAINT_INTERVAL_GPU_MICROS: u64 = 8333;  // 120 FPS (8.33ms per frame) - GPU mode
+pub const REPAINT_INTERVAL_CPU_MICROS: u64 = 16667; // 60 FPS (16.67ms per frame) - CPU mode
 
 // === SoundCloud Branding ===
 pub const DOMINANT_COLOR_RGB: (u8, u8, u8) = (255, 85, 0); // SoundCloud orange

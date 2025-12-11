@@ -32,9 +32,9 @@ pub struct AudioController {
 
 impl AudioController {
     pub fn new(
-        bass_energy: Arc<std::sync::atomic::AtomicU32>,
-        mid_energy: Arc<std::sync::atomic::AtomicU32>,
-        high_energy: Arc<std::sync::atomic::AtomicU32>,
+        bass_energy: Option<Arc<std::sync::atomic::AtomicU32>>,
+        mid_energy: Option<Arc<std::sync::atomic::AtomicU32>>,
+        high_energy: Option<Arc<std::sync::atomic::AtomicU32>>,
     ) -> Self {
         let (command_tx, command_rx): (Sender<AudioCommand>, Receiver<AudioCommand>) = channel();
         let position = Arc::new(Mutex::new(Duration::ZERO));
@@ -92,13 +92,13 @@ impl AudioController {
 
                             log::debug!("[AudioController] Starting cached audio playback...");
                             match rt.block_on(AudioPlayer::new_and_play_cached(
-                                &url, 
-                                &token, 
+                                &url,
+                                &token,
                                 track_id,
                                 duration_ms,
-                                Arc::clone(&bass_energy),
-                                Arc::clone(&mid_energy),
-                                Arc::clone(&high_energy),
+                                bass_energy.as_ref().map(Arc::clone),
+                                mid_energy.as_ref().map(Arc::clone),
+                                high_energy.as_ref().map(Arc::clone),
                             )) {
                                 Ok(mut p) => {
                                     log::info!("[AudioController] Audio playback started");
@@ -167,9 +167,9 @@ impl AudioController {
                                         pos,
                                         &u,
                                         &t,
-                                        Arc::clone(&bass_energy),
-                                        Arc::clone(&mid_energy),
-                                        Arc::clone(&high_energy),
+                                        bass_energy.as_ref().map(Arc::clone),
+                                        mid_energy.as_ref().map(Arc::clone),
+                                        high_energy.as_ref().map(Arc::clone),
                                     )) {
                                         log::error!("[AudioController] Seek error: {}", e);
                                     }

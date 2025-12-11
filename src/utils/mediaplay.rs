@@ -149,17 +149,33 @@ impl AudioPlayer {
         token: &str,
         track_id: u64,
         duration_ms: u64,
-        bass_energy: std::sync::Arc<std::sync::atomic::AtomicU32>,
-        mid_energy: std::sync::Arc<std::sync::atomic::AtomicU32>,
-        high_energy: std::sync::Arc<std::sync::atomic::AtomicU32>,
+        bass_energy: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
+        mid_energy: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
+        high_energy: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        log::info!("[AudioPlayer] Starting progressive streaming for track {}", track_id);
+        let fft_enabled = bass_energy.is_some();
+        if fft_enabled {
+            log::info!("[AudioPlayer] Starting progressive streaming for track {} (FFT enabled)", track_id);
+        } else {
+            log::info!("[AudioPlayer] Starting progressive streaming for track {} (FFT disabled)", track_id);
+        }
+
         let (_stream, stream_handle) = OutputStream::try_default()?;
-        
-        // Create dual channels - one for audio playback, one for FFT
+
+        // Create dual channels - one for audio playback, one for FFT (if enabled)
         let (sample_tx, sample_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
-        let (fft_download_tx, fft_download_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
-        let (fft_playback_tx, fft_playback_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
+        let (fft_download_tx, fft_download_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = if fft_enabled {
+            channel()
+        } else {
+            // Create dummy channels that won't be used
+            channel()
+        };
+        let (fft_playback_tx, fft_playback_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = if fft_enabled {
+            channel()
+        } else {
+            // Create dummy channels that won't be used
+            channel()
+        };
         
         let finished = Arc::new(Mutex::new(false));
         let finished_clone = Arc::clone(&finished);
@@ -183,19 +199,21 @@ impl AudioPlayer {
         
         let sample_rate = 44100; // Default for MP3
         let channels = 2; // Stereo default
-        
-        // Create FFT analyzer that reads from its own dedicated channel
-        let analyzer = crate::utils::audio_analyzer::AudioAnalyzer::new(
-            Arc::clone(&bass_energy),
-            Arc::clone(&mid_energy),
-            Arc::clone(&high_energy),
-        );
-        
-        let analyzer_arc = Arc::new(Mutex::new(analyzer));
-        
-        // Spawn dedicated FFT processing thread (merges download + playback samples)
-        let fft_analyzer = Arc::clone(&analyzer_arc);
-        std::thread::spawn(move || {
+
+        // Create FFT analyzer only if FFT is enabled (GPU mode)
+        if fft_enabled {
+            if let (Some(bass), Some(mid), Some(high)) = (bass_energy.clone(), mid_energy.clone(), high_energy.clone()) {
+                let analyzer = crate::utils::audio_analyzer::AudioAnalyzer::new(
+                    bass,
+                    mid,
+                    high,
+                );
+
+                let analyzer_arc = Arc::new(Mutex::new(analyzer));
+
+                // Spawn dedicated FFT processing thread (merges download + playback samples)
+                let fft_analyzer = Arc::clone(&analyzer_arc);
+                std::thread::spawn(move || {
             log::info!("[FFT] Dedicated FFT processing thread started");
             let mut sample_count = 0usize;
             
@@ -246,10 +264,21 @@ impl AudioPlayer {
             }
             
             log::info!("[FFT] FFT processing thread terminated, processed ~{} samples", sample_count);
-        });
-        
+                });
+            }
+        } else {
+            log::info!("[AudioPlayer] FFT disabled - skipping FFT analyzer initialization");
+        }
+
         // Audio source sends samples to FFT as they're played (continues after download ends)
-        let source = StreamingSource::new(sample_rx, sample_rate, channels, finished, Some(fft_playback_tx));
+        // Only pass fft_playback_tx if FFT is enabled
+        let source = StreamingSource::new(
+            sample_rx,
+            sample_rate,
+            channels,
+            finished,
+            if fft_enabled { Some(fft_playback_tx) } else { None }
+        );
         
         let sink = Sink::try_new(&stream_handle)?;
         sink.append(source);
@@ -337,9 +366,9 @@ impl AudioPlayer {
         position: Duration,
         url: &str,
         token: &str,
-        bass_energy: Arc<std::sync::atomic::AtomicU32>,
-        mid_energy: Arc<std::sync::atomic::AtomicU32>,
-        high_energy: Arc<std::sync::atomic::AtomicU32>,
+        bass_energy: Option<Arc<std::sync::atomic::AtomicU32>>,
+        mid_energy: Option<Arc<std::sync::atomic::AtomicU32>>,
+        high_energy: Option<Arc<std::sync::atomic::AtomicU32>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("[AudioPlayer] Seeking to {:?} by restarting stream...", position);
 
@@ -417,19 +446,22 @@ impl AudioPlayer {
 
             let sample_rate = 44100;
             let channels = 2;
-        
-            // Create FFT analyzer for seek (same as initial playback)
-            let analyzer = crate::utils::audio_analyzer::AudioAnalyzer::new(
-                Arc::clone(&bass_energy),
-                Arc::clone(&mid_energy),
-                Arc::clone(&high_energy),
-            );
-            
-            let analyzer_arc = Arc::new(Mutex::new(analyzer));
-            
-            // Spawn dedicated FFT processing thread for seek (merges download + playback)
-            let fft_analyzer = Arc::clone(&analyzer_arc);
-            std::thread::spawn(move || {
+
+            // Create FFT analyzer only if FFT is enabled (GPU mode)
+            let fft_enabled = bass_energy.is_some();
+            if fft_enabled {
+                if let (Some(bass), Some(mid), Some(high)) = (bass_energy.clone(), mid_energy.clone(), high_energy.clone()) {
+                    let analyzer = crate::utils::audio_analyzer::AudioAnalyzer::new(
+                        bass,
+                        mid,
+                        high,
+                    );
+
+                    let analyzer_arc = Arc::new(Mutex::new(analyzer));
+
+                    // Spawn dedicated FFT processing thread for seek (merges download + playback)
+                    let fft_analyzer = Arc::clone(&analyzer_arc);
+                    std::thread::spawn(move || {
                 log::info!("[FFT] Seek FFT processing thread started");
                 
                 // Process samples from both download and playback channels
@@ -476,9 +508,20 @@ impl AudioPlayer {
                     }
                 }
                 log::info!("[FFT] Seek FFT processing thread terminated");
-            });
-            
-            let source = StreamingSource::new(sample_rx, sample_rate, channels, finished, Some(fft_playback_tx));
+                    });
+                }
+            } else {
+                log::info!("[AudioPlayer] FFT disabled for seek - skipping FFT analyzer initialization");
+            }
+
+            // Audio source sends samples to FFT as they're played (only if FFT is enabled)
+            let source = StreamingSource::new(
+                sample_rx,
+                sample_rate,
+                channels,
+                finished,
+                if fft_enabled { Some(fft_playback_tx) } else { None }
+            );
             
             let new_sink = Sink::try_new(&self.stream_handle)?;
             new_sink.append(source);

@@ -48,30 +48,56 @@ pub fn render_playlist_tracks(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: 
                 }
                 
                 ui.add_space(5.0);
-                
+
                 // Like playlist button (only show if we have a selected playlist)
                 if let Some(playlist_id) = app.content.selected_playlist_id {
                     let is_liked = app.content.liked_playlist_ids.contains(&playlist_id);
-                    let heart_icon = if is_liked { "❤" } else { "♡" };
-                    let heart_color = if is_liked { 
-                        egui::Color32::from_rgb(255, 85, 0) // Orange when liked
-                    } else { 
-                        egui::Color32::from_rgb(160, 160, 160) // Gray when not liked
-                    };
-                    
-                    let heart_btn = ui.add_sized(
-                        [30.0, 30.0], 
-                        egui::Button::new(heart_icon).fill(heart_color)
+
+                    // Create circular button matching the playlist screen style
+                    let heart_size = 32.0;
+                    let (heart_response, painter) = ui.allocate_painter(
+                        egui::Vec2::new(heart_size, heart_size),
+                        egui::Sense::click()
                     );
-                    
-                    if heart_btn.clicked() {
+
+                    let heart_rect = heart_response.rect;
+                    let heart_center = heart_rect.center();
+
+                    // Background circle with color matching playlist screen
+                    let bg_color = if heart_response.hovered() {
+                        egui::Color32::from_rgba_premultiplied(255, 50, 50, 200)  // Red on hover
+                    } else if is_liked {
+                        egui::Color32::from_rgba_premultiplied(255, 85, 0, 200)  // Orange when liked
+                    } else {
+                        egui::Color32::from_rgba_premultiplied(80, 80, 80, 200)  // Gray when not liked (default)
+                    };
+
+                    painter.circle_filled(
+                        heart_center,
+                        heart_size / 2.0,
+                        bg_color
+                    );
+
+                    // Heart icon (filled if liked, broken if not)
+                    let heart_icon = if is_liked { "❤" } else { "💔" };
+                    painter.text(
+                        heart_center,
+                        egui::Align2::CENTER_CENTER,
+                        heart_icon,
+                        egui::FontId::proportional(16.0),
+                        egui::Color32::WHITE
+                    );
+
+                    // Handle click
+                    if heart_response.clicked() {
                         app.toggle_playlist_like(playlist_id);
                     }
-                    
-                    if heart_btn.hovered() {
+
+                    // Show cursor hand on hover
+                    if heart_response.hovered() {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
-                    
+
                     ui.add_space(5.0);
                 }
                 

@@ -17,7 +17,9 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
     }
     
     // Get current track from queue
-    if let Some(current_track) = app.audio.playback_queue.current_track() {
+    let current_track_clone = app.audio.playback_queue.current_track().cloned();
+
+    if let Some(current_track) = current_track_clone {
         // Render shader background for Now Playing view
         // Prefer multi-pass if available, fallback to single-pass
         let rect = ui.max_rect();
@@ -53,9 +55,9 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
             );
             ui.painter().add(callback);
         }
-        
+
         // No overlay - use text shadows instead for readability
-        render_track_details(app, ui, current_track);
+        render_track_details(app, ui, &current_track);
     } else {
         // Fallback: use stored current track info
         render_fallback_view(app, ui);
@@ -207,12 +209,12 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
         
         if let Some(texture) = texture_to_use {
             let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(artwork_size, artwork_size), egui::Sense::hover());
-            
+
             // Draw audio-reactive glow if real artwork
             if app.ui.artwork_texture.is_some() && app.audio.current_track_id == Some(track.id) {
                 render_artwork_glow(ui, rect, app);
             }
-            
+
             // Draw artwork
             ui.painter().image(
                 texture.id(),
@@ -330,12 +332,12 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         
         if let Some(texture) = texture_to_use {
             let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(artwork_size, artwork_size), egui::Sense::hover());
-            
+
             // Draw audio-reactive glow
             if app.ui.artwork_texture.is_some() {
                 render_artwork_glow(ui, rect, app);
             }
-            
+
             // Draw artwork
             ui.painter().image(
                 texture.id(),

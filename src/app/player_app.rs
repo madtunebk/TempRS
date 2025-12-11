@@ -67,9 +67,12 @@ impl MusicPlayerApp {
         OAuthManager::new(config)
     }
 
-    /// Create AudioState with saved playback preferences
+    /// Create AudioState with saved playback preferences and FFT based on renderer
     fn create_audio_state(app_state: &AppState) -> AudioState {
-        let mut audio = AudioState::default();
+        // Check if we're using GPU renderer (FFT needed for shaders)
+        let enable_fft = app_state.get_renderer_type() == crate::app_state::RendererType::Gpu;
+
+        let mut audio = AudioState::new(enable_fft);
         audio.volume = app_state.get_volume();
         audio.muted = app_state.is_muted();
         audio.volume_before_mute = if audio.muted { audio.volume } else { DEFAULT_VOLUME_BEFORE_MUTE };
@@ -115,13 +118,28 @@ impl MusicPlayerApp {
     }
 
     /// Create a new MusicPlayerApp with shader initialized from eframe CreationContext
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let mut app = Self::default();
+    pub fn new(cc: &eframe::CreationContext<'_>, use_gpu: bool) -> Self {
+        // Store renderer type in a new app_state
+        let app_state = AppState::new();
+        let renderer_type = if use_gpu {
+            crate::app_state::RendererType::Gpu
+        } else {
+            crate::app_state::RendererType::Cpu
+        };
+        app_state.set_renderer_type(renderer_type);
 
-        // AudioController is already properly initialized in AudioState::default()
-        // with the correct FFT handles, so no need to recreate it here
+        let oauth_manager = Self::create_oauth_manager();
 
-        // Initialize shaders using ShaderManager
+        // Now create app with properly configured audio state (FFT enabled/disabled based on renderer)
+        let mut app = Self {
+            audio: Self::create_audio_state(&app_state),
+            auth: Self::create_auth_state(oauth_manager),
+            ui: Self::create_ui_state(),
+            content: Self::create_content_state(app_state),
+            tasks: BackgroundTasks::default(),
+        };
+
+        // Initialize shaders using ShaderManager (only works with GPU/WGPU)
         app.ui.shader_manager.initialize(cc.wgpu_render_state.as_ref());
 
         app
@@ -1738,8 +1756,15 @@ impl MusicPlayerApp {
 
 impl eframe::App for MusicPlayerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        // Request repaint with 120 FPS cap (8.33ms per frame) for smooth shader animation
-        ctx.request_repaint_after(Duration::from_micros(REPAINT_INTERVAL_MICROS));
+        // Request repaint with FPS based on renderer type
+        // GPU: 120 FPS for smooth shader animation
+        // CPU: 60 FPS to save CPU cycles
+        let repaint_interval = if self.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu {
+            Duration::from_micros(REPAINT_INTERVAL_GPU_MICROS)
+        } else {
+            Duration::from_micros(REPAINT_INTERVAL_CPU_MICROS)
+        };
+        ctx.request_repaint_after(repaint_interval);
 
         // Check for shader hot-reload (delegated to ShaderManager)
         self.ui.shader_manager.check_hot_reload();

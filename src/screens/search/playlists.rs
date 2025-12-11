@@ -101,6 +101,55 @@ fn render_playlist_item(
         super::draw_no_artwork(app, ui, artwork_rect);
     }
 
+    // Add like button overlay (always show for search results)
+    let is_liked = app.content.liked_playlist_ids.contains(&playlist.id);
+    let heart_size = 32.0;
+    let heart_pos = artwork_rect.min + egui::Vec2::new(4.0, 4.0);
+    let heart_rect = egui::Rect::from_min_size(heart_pos, egui::Vec2::new(heart_size, heart_size));
+
+    let heart_response = ui.interact(
+        heart_rect,
+        ui.id().with(("search_playlist_like", playlist.id)),
+        Sense::click()
+    );
+
+    // Heart button background (circle) with color based on state
+    let bg_color = if heart_response.hovered() {
+        Color32::from_rgba_premultiplied(255, 50, 50, 200)  // Red on hover
+    } else if is_liked {
+        Color32::from_rgba_premultiplied(255, 85, 0, 200)  // Orange when liked
+    } else {
+        Color32::from_rgba_premultiplied(80, 80, 80, 200)  // Gray when not liked
+    };
+
+    ui.painter().circle_filled(
+        heart_rect.center(),
+        heart_size / 2.0,
+        bg_color
+    );
+
+    // Heart icon (filled if liked, broken if not)
+    let heart_icon = if is_liked { "❤" } else { "💔" };
+    ui.painter().text(
+        heart_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        heart_icon,
+        egui::FontId::proportional(16.0),
+        Color32::WHITE
+    );
+
+    // Handle like/unlike click
+    if heart_response.clicked() {
+        log::info!("[Search] Toggle like for playlist: {} ({})", playlist.title, playlist.id);
+        app.toggle_playlist_like(playlist.id);
+        return; // Don't trigger playlist load
+    }
+
+    // Show cursor hand on hover
+    if heart_response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+
     if response.hovered() {
         ui.painter().rect_filled(
             artwork_rect,
@@ -141,6 +190,9 @@ fn load_playlist(app: &mut MusicPlayerApp, playlist: &crate::app::playlists::Pla
         playlist.title,
         playlist.track_count
     );
+
+    // Set selected playlist ID so like button appears in queue
+    app.content.selected_playlist_id = Some(playlist.id);
 
     let has_preview_tracks = !playlist.tracks.is_empty();
     let needs_full_fetch = playlist.track_count > playlist.tracks.len() as u32;

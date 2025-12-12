@@ -184,7 +184,8 @@ fn render_layout_with_content<F>(
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    ctx.request_repaint();
+                    // Removed unconditional repaint - rely on player_app.rs conditional logic
+                    // to avoid unnecessary repaints when idle (CPU optimization)
                     render_content(app, ui, ctx);
                     ui.add_space(bottom_padding);
                 });

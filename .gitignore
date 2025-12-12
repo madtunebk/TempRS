@@ -66,3 +66,4 @@ create_app
 # === AppImage builds ===
 *.AppImage
 APPIMAGE_BUILD.md
+.claude

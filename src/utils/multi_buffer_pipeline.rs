@@ -116,6 +116,25 @@ pub struct MultiPassPipelines {
     #[allow(dead_code)]
     pub sampler: Sampler,
     pub start_time: Instant,
+
+    // CRITICAL: Keep textures alive for the lifetime of their views
+    // These MUST NOT be dropped while bind groups reference their views
+    #[allow(dead_code)]
+    dummy_texture: Texture,
+    #[allow(dead_code)]
+    user_image_textures: [Option<Texture>; 4],
+}
+
+impl Drop for MultiPassPipelines {
+    fn drop(&mut self) {
+        log::debug!("Dropping MultiPassPipelines - releasing GPU resources (buffers: {}, user images: {})",
+            [&self.buffer_a, &self.buffer_b, &self.buffer_c, &self.buffer_d]
+                .iter()
+                .filter(|b| b.is_some())
+                .count(),
+            self.user_image_textures.iter().filter(|t| t.is_some()).count()
+        );
+    }
 }
 
 impl MultiPassPipelines {
@@ -139,10 +158,25 @@ impl MultiPassPipelines {
         embedded_images: &[Option<Vec<u8>>; 4],
     ) -> Result<Self, ShaderError> {
         log::info!(
-            "Creating multi-pass shader pipeline (resolution: {}x{})",
+            "Creating multi-pass shader pipeline (resolution: {}x{}, format: {:?})",
             screen_size[0],
-            screen_size[1]
+            screen_size[1],
+            format
         );
+
+        // Validate screen size to prevent excessive VRAM usage
+        if screen_size[0] == 0 || screen_size[1] == 0 {
+            return Err(ShaderError::CompilationError(
+                format!("Invalid screen size: {}x{}", screen_size[0], screen_size[1])
+            ));
+        }
+        if screen_size[0] > 8192 || screen_size[1] > 8192 {
+            log::warn!(
+                "Very large screen size: {}x{} - this may cause VRAM issues on some systems",
+                screen_size[0],
+                screen_size[1]
+            );
+        }
 
         // ===== Uniform buffer =====
         let uniform_size = std::mem::size_of::<ShaderUniforms>() as u64;
@@ -687,19 +721,29 @@ impl MultiPassPipelines {
 
         // ===== Bind group for MainImage to read all buffer textures =====
         // Create dummy texture for any missing buffers
-        let (_dummy_tex, dummy_view) = create_color_target(device, [1, 1], format, "dummy_texture");
-        
+        // CRITICAL: Must keep texture alive, not just the view!
+        let (dummy_tex, dummy_view) = create_color_target(device, [1, 1], format, "dummy_texture");
+
         // Load embedded user images (iChannel0-3) if provided
         let mut user_image_views: [Option<TextureView>; 4] = [None, None, None, None];
-        let mut _user_image_textures: [Option<Texture>; 4] = [None, None, None, None];
+        let mut user_image_textures: [Option<Texture>; 4] = [None, None, None, None];
         
         for (i, image_data_opt) in embedded_images.iter().enumerate() {
             if let Some(image_bytes) = image_data_opt {
+                log::debug!("Loading embedded image {} ({} bytes)", i, image_bytes.len());
                 // Decode image from bytes
                 match image::load_from_memory(image_bytes) {
                     Ok(img) => {
                         let rgba = img.to_rgba8();
                         let (width, height) = rgba.dimensions();
+                        let vram_size_mb = (width * height * 4) as f32 / 1024.0 / 1024.0;
+
+                        if width > 4096 || height > 4096 {
+                            log::warn!(
+                                "Large embedded image {} ({}x{}, {:.2} MB VRAM) - consider reducing size",
+                                i, width, height, vram_size_mb
+                            );
+                        }
                         
                         let size = eframe::wgpu::Extent3d {
                             width,
@@ -726,7 +770,7 @@ impl MultiPassPipelines {
                         );
                         
                         let view = texture.create_view(&eframe::wgpu::TextureViewDescriptor::default());
-                        _user_image_textures[i] = Some(texture);
+                        user_image_textures[i] = Some(texture);
                         user_image_views[i] = Some(view);
                         log::info!("Created texture for iChannel{} ({}x{}) and uploaded {} bytes", i, width, height, rgba.len());
                     }
@@ -855,6 +899,9 @@ impl MultiPassPipelines {
             main_texture_bind_group: main_tex_bg,
             sampler,
             start_time: Instant::now(),
+            // CRITICAL: Store textures to keep them alive
+            dummy_texture: dummy_tex,
+            user_image_textures,
         })
     }
 

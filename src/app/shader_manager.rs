@@ -1,11 +1,18 @@
 use eframe::egui_wgpu::wgpu::{Device, Queue, TextureFormat};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use crate::utils::{ShaderPipeline, MultiPassPipelines, ShaderJson};
 use sha2::{Sha256, Digest};
 
-const SHADER_CACHE_PATH: &str = ".cache/TempRS/shaders/shader.json";
 const SHADER_HOT_RELOAD_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Get the OS-appropriate shader cache path
+/// Returns None if the cache directory cannot be determined (rare - only on unsupported systems)
+fn get_shader_cache_path() -> Option<PathBuf> {
+    let cache_dir = dirs::cache_dir()?;
+    Some(cache_dir.join("TempRS").join("shaders").join("shader.json"))
+}
 
 /// Manages all shader-related state and loading logic
 /// Consolidates duplicated shader loading code from player_app.rs
@@ -107,24 +114,33 @@ impl ShaderManager {
         let screen_size = [1920, 1080]; // Default size, will resize on first render
         
         // Try to load from cache
-        let json_shader = if let Ok(home_dir) = std::env::var("HOME") {
-            let cache_path = format!("{}/{}", home_dir, SHADER_CACHE_PATH);
-            if std::path::Path::new(&cache_path).exists() {
+        let json_shader = if let Some(cache_path) = get_shader_cache_path() {
+            // Ensure parent directory exists (helps first-time users)
+            if let Some(parent) = cache_path.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    log::warn!("[ShaderManager] Failed to create shader cache directory: {}", e);
+                }
+            }
+
+            if cache_path.exists() {
                 match std::fs::read_to_string(&cache_path) {
                     Ok(json) => {
-                        log::info!("[ShaderManager] Loading shader from cache: {}", cache_path);
+                        log::info!("[ShaderManager] Loading shader from cache: {}", cache_path.display());
                         Some(json)
                     }
                     Err(e) => {
-                        log::warn!("[ShaderManager] Failed to read cached shader: {}", e);
+                        log::warn!("[ShaderManager] Failed to read cached shader at {}: {}",
+                                  cache_path.display(), e);
                         None
                     }
                 }
             } else {
-                log::info!("[ShaderManager] No cached shader found, using embedded default");
+                log::info!("[ShaderManager] No cached shader found at {}, using embedded default",
+                          cache_path.display());
                 None
             }
         } else {
+            log::error!("[ShaderManager] Failed to determine cache directory - OS may not support standard directories");
             None
         };
         
@@ -218,10 +234,16 @@ impl ShaderManager {
         };
         
         // Check cache path
-        let Ok(home_dir) = std::env::var("HOME") else { return };
-        let cache_path = format!("{}/{}", home_dir, SHADER_CACHE_PATH);
-        
-        if !std::path::Path::new(&cache_path).exists() {
+        let Some(cache_path) = get_shader_cache_path() else {
+            // Only log once to avoid spam (hot-reload runs every 500ms)
+            static LOGGED_ERROR: std::sync::Once = std::sync::Once::new();
+            LOGGED_ERROR.call_once(|| {
+                log::error!("[ShaderManager] Hot-reload disabled: cannot determine cache directory");
+            });
+            return
+        };
+
+        if !cache_path.exists() {
             return; // No cached shader to reload
         }
         

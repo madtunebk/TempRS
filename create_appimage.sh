@@ -18,16 +18,89 @@ APP_NAME="TempRS"
 APPDIR="create_app/AppDir"
 APPIMAGETOOL="create_app/appimagetool-x86_64.AppImage"
 
-# Step 1: Build the release binary
-echo -e "${YELLOW}[1/5]${NC} Building release binary..."
-cargo build --release
+# Parse arguments
+FORCE_BUILD=false
+SKIP_BUILD=false
+for arg in "$@"; do
+    case $arg in
+        --force|-f)
+            FORCE_BUILD=true
+            shift
+            ;;
+        --skip-build|-s)
+            SKIP_BUILD=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $0 [OPTIONS]"
+            echo "Options:"
+            echo "  --force, -f       Force rebuild even if sources unchanged"
+            echo "  --skip-build, -s  Skip cargo build, use existing binary"
+            echo "  --help, -h        Show this help message"
+            exit 0
+            ;;
+    esac
+done
 
-if [ ! -f "target/release/TempRS" ]; then
-    echo -e "${RED}Error: Release binary not found!${NC}"
-    exit 1
+# Step 1: Smart build system
+if [ "$SKIP_BUILD" = true ]; then
+    echo -e "${YELLOW}[1/5]${NC} Skipping cargo build (--skip-build flag)"
+
+    if [ ! -f "target/release/TempRS" ]; then
+        echo -e "${RED}Error: Binary not found and --skip-build specified!${NC}"
+        echo "Run without --skip-build to build first"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ Using existing binary${NC}"
+else
+    echo -e "${YELLOW}[1/5]${NC} Checking if rebuild is needed..."
+
+    NEEDS_BUILD=false
+
+    # Check if binary exists
+    if [ ! -f "target/release/TempRS" ]; then
+        echo -e "${YELLOW}→ Binary not found, build required${NC}"
+        NEEDS_BUILD=true
+    elif [ "$FORCE_BUILD" = true ]; then
+        echo -e "${YELLOW}→ Force build requested (--force flag)${NC}"
+        NEEDS_BUILD=true
+    else
+        # Check if any Rust source files are newer than the binary
+        BINARY_TIME=$(stat -c %Y "target/release/TempRS" 2>/dev/null || echo 0)
+
+        # Find newest source file
+        NEWEST_SRC=$(find src -type f \( -name "*.rs" -o -name "*.toml" \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
+        NEWEST_SRC=${NEWEST_SRC:-0}
+        NEWEST_SRC_INT=${NEWEST_SRC%.*}  # Remove decimal part
+
+        # Also check Cargo.toml
+        CARGO_TOML_TIME=$(stat -c %Y "Cargo.toml" 2>/dev/null || echo 0)
+
+        if [ "$NEWEST_SRC_INT" -gt "$BINARY_TIME" ] || [ "$CARGO_TOML_TIME" -gt "$BINARY_TIME" ]; then
+            echo -e "${YELLOW}→ Source files modified, rebuild required${NC}"
+            NEEDS_BUILD=true
+        else
+            echo -e "${GREEN}→ Binary is up to date, skipping rebuild${NC}"
+            echo -e "${GREEN}   (use --force to rebuild anyway)${NC}"
+            NEEDS_BUILD=false
+        fi
+    fi
+
+    if [ "$NEEDS_BUILD" = true ]; then
+        echo -e "${YELLOW}→ Building release binary...${NC}"
+        cargo build --release
+
+        if [ ! -f "target/release/TempRS" ]; then
+            echo -e "${RED}Error: Release binary not found after build!${NC}"
+            exit 1
+        fi
+
+        echo -e "${GREEN}✓ Release binary built successfully${NC}"
+    else
+        echo -e "${GREEN}✓ Using existing binary (no changes detected)${NC}"
+    fi
 fi
-
-echo -e "${GREEN}✓ Release binary built successfully${NC}"
 
 # Step 2: Copy binary to AppDir
 echo -e "${YELLOW}[2/5]${NC} Copying binary to AppDir..."

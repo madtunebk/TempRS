@@ -181,12 +181,15 @@ impl MusicPlayerApp {
     pub fn check_artwork(&mut self, ctx: &egui::Context) {
         if let Some(rx) = &self.tasks.artwork_rx {
             if let Ok(img) = rx.try_recv() {
-                // Extract dominant color for ambient glow
-                self.ui.artwork_dominant_color = crate::utils::artwork::extract_dominant_color(&img);
-                
-                // Extract edge colors for Ambilight effect
-                self.ui.artwork_edge_colors = crate::utils::artwork::extract_edge_colors(&img);
-                
+                // Extract colors only in GPU mode (used for shader glow effects)
+                if self.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu {
+                    // Extract dominant color for ambient glow
+                    self.ui.artwork_dominant_color = crate::utils::artwork::extract_dominant_color(&img);
+
+                    // Extract edge colors for Ambilight effect
+                    self.ui.artwork_edge_colors = crate::utils::artwork::extract_edge_colors(&img);
+                }
+
                 self.ui.artwork_texture = Some(ctx.load_texture(
                     "artwork",
                     img,
@@ -1756,18 +1759,32 @@ impl MusicPlayerApp {
 
 impl eframe::App for MusicPlayerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        // Request repaint with FPS based on renderer type
-        // GPU: 120 FPS for smooth shader animation
-        // CPU: 60 FPS to save CPU cycles
+        // Adaptive frame rate based on renderer type and activity
+        // GPU: 120 FPS for smooth shader animations
+        // CPU Active: 30 FPS when loading/toasts (smooth UI feedback)
+        // CPU Idle: 20 FPS when nothing happening (maximum power savings)
         let repaint_interval = if self.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu {
             Duration::from_micros(REPAINT_INTERVAL_GPU_MICROS)
         } else {
-            Duration::from_micros(REPAINT_INTERVAL_CPU_MICROS)
+            // Check if there's any activity requiring smoother updates
+            let is_active = self.content.search_loading
+                || self.content.home_loading
+                || self.ui.artwork_loading
+                || !self.ui.toast_manager.toasts.is_empty();
+
+            if is_active {
+                Duration::from_micros(REPAINT_INTERVAL_CPU_ACTIVE)  // 30 FPS
+            } else {
+                Duration::from_micros(REPAINT_INTERVAL_CPU_IDLE)    // 20 FPS
+            }
         };
         ctx.request_repaint_after(repaint_interval);
 
         // Check for shader hot-reload (delegated to ShaderManager)
-        self.ui.shader_manager.check_hot_reload();
+        // Only in GPU mode - no shaders loaded in CPU mode
+        if self.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu {
+            self.ui.shader_manager.check_hot_reload();
+        }
 
         // Handle close request - cleanup and exit immediately
         if ctx.input(|i| i.viewport().close_requested())
@@ -1896,7 +1913,10 @@ impl eframe::App for MusicPlayerApp {
             }
             AppScreen::Main => {
                 // AUDIO REACTIVITY: Use real FFT analysis (lock-free!)
-                if self.audio.is_playing {
+                // Only in GPU mode - FFT is disabled in CPU mode
+                if self.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu
+                    && self.audio.is_playing
+                {
                     // Read bass energy for overall amplitude (pulsing effect)
                     self.ui.audio_amplitude = crate::utils::error_handling::load_f32_atomic(&self.audio.bass_energy);
                 } else {

@@ -67,3 +67,4 @@ create_app
 *.AppImage
 APPIMAGE_BUILD.md
 .claude
+.github

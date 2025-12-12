@@ -20,40 +20,51 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
     let current_track_clone = app.audio.playback_queue.current_track().cloned();
 
     if let Some(current_track) = current_track_clone {
-        // Render shader background for Now Playing view
-        // Prefer multi-pass if available, fallback to single-pass
-        let rect = ui.max_rect();
+        // Render shader background ONLY in GPU mode (expensive wgpu callbacks)
+        // In CPU mode, skip shaders entirely to prevent 90% CPU usage on integrated GPUs
+        if app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu {
+            // Prefer multi-pass if available, fallback to single-pass
+            let rect = ui.max_rect();
 
-        if let Some(multi_shader) = &app.ui.shader_manager.multi_pass_shader {
-            // Use multi-pass shader (supports BufferA-D from editor exports)
-            let callback = egui_wgpu::Callback::new_paint_callback(
+            if let Some(multi_shader) = &app.ui.shader_manager.multi_pass_shader {
+                // Use multi-pass shader (supports BufferA-D from editor exports)
+                let callback = egui_wgpu::Callback::new_paint_callback(
+                    rect,
+                    MultiPassCallback {
+                        shader: multi_shader.clone(),
+                        bass_energy: app.audio.bass_energy.clone(),
+                        mid_energy: app.audio.mid_energy.clone(),
+                        high_energy: app.audio.high_energy.clone(),
+                        gamma: app.ui.shader_manager.gamma(),
+                        contrast: app.ui.shader_manager.contrast(),
+                        saturation: app.ui.shader_manager.saturation(),
+                    },
+                );
+                ui.painter().add(callback);
+            } else if let Some(shader) = &app.ui.shader_manager.track_metadata_shader {
+                // Fallback to single-pass shader (backward compatibility)
+                let callback = egui_wgpu::Callback::new_paint_callback(
+                    rect,
+                    ShaderCallback {
+                        shader: shader.clone(),
+                        bass_energy: app.audio.bass_energy.clone(),
+                        mid_energy: app.audio.mid_energy.clone(),
+                        high_energy: app.audio.high_energy.clone(),
+                        gamma: app.ui.shader_manager.gamma(),
+                        contrast: app.ui.shader_manager.contrast(),
+                        saturation: app.ui.shader_manager.saturation(),
+                    },
+                );
+                ui.painter().add(callback);
+            }
+        } else {
+            // CPU mode: render simple solid background instead of shaders
+            let rect = ui.max_rect();
+            ui.painter().rect_filled(
                 rect,
-                MultiPassCallback {
-                    shader: multi_shader.clone(),
-                    bass_energy: app.audio.bass_energy.clone(),
-                    mid_energy: app.audio.mid_energy.clone(),
-                    high_energy: app.audio.high_energy.clone(),
-                    gamma: app.ui.shader_manager.gamma(),
-                    contrast: app.ui.shader_manager.contrast(),
-                    saturation: app.ui.shader_manager.saturation(),
-                },
+                0.0,
+                egui::Color32::from_rgb(20, 20, 25), // Dark background similar to other screens
             );
-            ui.painter().add(callback);
-        } else if let Some(shader) = &app.ui.shader_manager.track_metadata_shader {
-            // Fallback to single-pass shader (backward compatibility)
-            let callback = egui_wgpu::Callback::new_paint_callback(
-                rect,
-                ShaderCallback {
-                    shader: shader.clone(),
-                    bass_energy: app.audio.bass_energy.clone(),
-                    mid_energy: app.audio.mid_energy.clone(),
-                    high_energy: app.audio.high_energy.clone(),
-                    gamma: app.ui.shader_manager.gamma(),
-                    contrast: app.ui.shader_manager.contrast(),
-                    saturation: app.ui.shader_manager.saturation(),
-                },
-            );
-            ui.painter().add(callback);
         }
 
         // No overlay - use text shadows instead for readability
@@ -149,49 +160,73 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
     ui.vertical_centered(|ui| {
         ui.add_space(60.0);
         
-        // Track title with strong outline/stroke effect
+        // Track title with outline effect (optimized for CPU mode)
         let title_font = egui::FontId::proportional(28.0);
         let available_width = ui.available_width();
         let title_center_x = ui.cursor().min.x + available_width / 2.0;
         let title_y = ui.cursor().min.y;
         
-        // Outer black stroke (thick)
-        for distance in [4.0, 3.0, 2.0] {
-            for angle in 0..16 {
-                let rad = (angle as f32) * std::f32::consts::PI / 8.0;
-                let offset_x = rad.cos() * distance;
-                let offset_y = rad.sin() * distance;
-                ui.painter().text(
-                    egui::pos2(title_center_x + offset_x, title_y + offset_y),
-                    egui::Align2::CENTER_TOP,
-                    &app.audio.current_title,
-                    title_font.clone(),
-                    egui::Color32::BLACK,
-                );
+        // CPU mode: simple shadow (2 draws) vs GPU mode: full stroke (48+ draws)
+        if app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Cpu {
+            // Simple drop shadow for readability (much cheaper)
+            ui.painter().text(
+                egui::pos2(title_center_x + 2.0, title_y + 2.0),
+                egui::Align2::CENTER_TOP,
+                &app.audio.current_title,
+                title_font.clone(),
+                egui::Color32::BLACK,
+            );
+        } else {
+            // GPU mode: full stroke effect (expensive but looks better)
+            for distance in [4.0, 3.0, 2.0] {
+                for angle in 0..16 {
+                    let rad = (angle as f32) * std::f32::consts::PI / 8.0;
+                    let offset_x = rad.cos() * distance;
+                    let offset_y = rad.sin() * distance;
+                    ui.painter().text(
+                        egui::pos2(title_center_x + offset_x, title_y + offset_y),
+                        egui::Align2::CENTER_TOP,
+                        &app.audio.current_title,
+                        title_font.clone(),
+                        egui::Color32::BLACK,
+                    );
+                }
             }
         }
         // Actual white text on top
         ui.label(egui::RichText::new(&app.audio.current_title).size(28.0).strong().color(egui::Color32::WHITE));
         ui.add_space(10.0);
         
-        // Artist name with strong outline
+        // Artist name with outline (optimized for CPU mode)
         let artist_font = egui::FontId::proportional(20.0);
         let artist_center_x = ui.cursor().min.x + available_width / 2.0;
         let artist_y = ui.cursor().min.y;
         
-        // Outer black stroke
-        for distance in [3.0, 2.0] {
-            for angle in 0..16 {
-                let rad = (angle as f32) * std::f32::consts::PI / 8.0;
-                let offset_x = rad.cos() * distance;
-                let offset_y = rad.sin() * distance;
-                ui.painter().text(
-                    egui::pos2(artist_center_x + offset_x, artist_y + offset_y),
-                    egui::Align2::CENTER_TOP,
-                    &track.user.username,
-                    artist_font.clone(),
-                    egui::Color32::BLACK,
-                );
+        // CPU mode: simple shadow vs GPU mode: full stroke
+        if app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Cpu {
+            // Simple drop shadow
+            ui.painter().text(
+                egui::pos2(artist_center_x + 2.0, artist_y + 2.0),
+                egui::Align2::CENTER_TOP,
+                &track.user.username,
+                artist_font.clone(),
+                egui::Color32::BLACK,
+            );
+        } else {
+            // GPU mode: full stroke
+            for distance in [3.0, 2.0] {
+                for angle in 0..16 {
+                    let rad = (angle as f32) * std::f32::consts::PI / 8.0;
+                    let offset_x = rad.cos() * distance;
+                    let offset_y = rad.sin() * distance;
+                    ui.painter().text(
+                        egui::pos2(artist_center_x + offset_x, artist_y + offset_y),
+                        egui::Align2::CENTER_TOP,
+                        &track.user.username,
+                        artist_font.clone(),
+                        egui::Color32::BLACK,
+                    );
+                }
             }
         }
         ui.label(egui::RichText::new(&track.user.username).size(20.0).color(egui::Color32::from_rgb(255, 85, 0)));
@@ -210,8 +245,11 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
         if let Some(texture) = texture_to_use {
             let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(artwork_size, artwork_size), egui::Sense::hover());
 
-            // Draw audio-reactive glow if real artwork
-            if app.ui.artwork_texture.is_some() && app.audio.current_track_id == Some(track.id) {
+            // Draw audio-reactive glow if real artwork (GPU mode only - expensive)
+            if app.ui.artwork_texture.is_some() 
+                && app.audio.current_track_id == Some(track.id)
+                && app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu
+            {
                 render_artwork_glow(ui, rect, app);
             }
 
@@ -236,40 +274,44 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
 
 /// Render fallback view using stored track info
 fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
-    // Render shader background for Now Playing view
-    // Prefer multi-pass if available, fallback to single-pass
+    // Render shader background ONLY in GPU mode
     let rect = ui.max_rect();
 
-    if let Some(multi_shader) = &app.ui.shader_manager.multi_pass_shader {
-        // Use multi-pass shader (supports BufferA-D from editor exports)
-        let callback = egui_wgpu::Callback::new_paint_callback(
-            rect,
-            MultiPassCallback {
-                shader: multi_shader.clone(),
-                bass_energy: app.audio.bass_energy.clone(),
-                mid_energy: app.audio.mid_energy.clone(),
-                high_energy: app.audio.high_energy.clone(),
-                gamma: app.ui.shader_manager.gamma(),
-                contrast: app.ui.shader_manager.contrast(),
-                saturation: app.ui.shader_manager.saturation(),
-            },
-        );
-        ui.painter().add(callback);
-    } else if let Some(shader) = &app.ui.shader_manager.track_metadata_shader {
-        // Fallback to single-pass shader (backward compatibility)
-        let callback = egui_wgpu::Callback::new_paint_callback(
-            rect,
-            ShaderCallback {
-                shader: shader.clone(),
-                bass_energy: app.audio.bass_energy.clone(),
-                mid_energy: app.audio.mid_energy.clone(),
-                high_energy: app.audio.high_energy.clone(),
-                gamma: app.ui.shader_manager.gamma(),
-                contrast: app.ui.shader_manager.contrast(),
-                saturation: app.ui.shader_manager.saturation(),
-            },
-        );
-        ui.painter().add(callback);
+    if app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu {
+        if let Some(multi_shader) = &app.ui.shader_manager.multi_pass_shader {
+            // Use multi-pass shader (supports BufferA-D from editor exports)
+            let callback = egui_wgpu::Callback::new_paint_callback(
+                rect,
+                MultiPassCallback {
+                    shader: multi_shader.clone(),
+                    bass_energy: app.audio.bass_energy.clone(),
+                    mid_energy: app.audio.mid_energy.clone(),
+                    high_energy: app.audio.high_energy.clone(),
+                    gamma: app.ui.shader_manager.gamma(),
+                    contrast: app.ui.shader_manager.contrast(),
+                    saturation: app.ui.shader_manager.saturation(),
+                },
+            );
+            ui.painter().add(callback);
+        } else if let Some(shader) = &app.ui.shader_manager.track_metadata_shader {
+            // Fallback to single-pass shader (backward compatibility)
+            let callback = egui_wgpu::Callback::new_paint_callback(
+                rect,
+                ShaderCallback {
+                    shader: shader.clone(),
+                    bass_energy: app.audio.bass_energy.clone(),
+                    mid_energy: app.audio.mid_energy.clone(),
+                    high_energy: app.audio.high_energy.clone(),
+                    gamma: app.ui.shader_manager.gamma(),
+                    contrast: app.ui.shader_manager.contrast(),
+                    saturation: app.ui.shader_manager.saturation(),
+                },
+            );
+            ui.painter().add(callback);
+        }
+    } else {
+        // CPU mode: solid dark background
+        ui.painter().rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 20, 25));
     }
     
     // No overlay - use text outlines for readability
@@ -333,8 +375,10 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         if let Some(texture) = texture_to_use {
             let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(artwork_size, artwork_size), egui::Sense::hover());
 
-            // Draw audio-reactive glow
-            if app.ui.artwork_texture.is_some() {
+            // Draw audio-reactive glow (GPU mode only)
+            if app.ui.artwork_texture.is_some()
+                && app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu
+            {
                 render_artwork_glow(ui, rect, app);
             }
 

@@ -420,7 +420,10 @@ fn render_playlist_card(
                     app.tasks.playlist_rx = Some(rx);
                     
                     std::thread::spawn(move || {
-                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap();
                         rt.block_on(async {
                             match crate::api::fetch_playlist_by_id(&token, playlist_id).await {
                                 Ok(full_playlist) => {

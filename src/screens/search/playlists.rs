@@ -249,7 +249,10 @@ fn load_playlist(app: &mut MusicPlayerApp, playlist: &crate::app::playlists::Pla
         app.content.playlist_loading_id = Some(playlist_id);
 
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
             rt.block_on(async {
                 if let Err(e) = crate::app::playlists::fetch_playlist_chunks(
                     &token,

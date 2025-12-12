@@ -120,7 +120,10 @@ fn start_oauth_flow(app: &mut MusicPlayerApp) {
         // Spawn async task to handle OAuth callback
         let oauth_manager = app.auth.oauth_manager.clone();
         std::thread::spawn(move || {
-            let runtime = tokio::runtime::Runtime::new().unwrap();
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
             runtime.block_on(async {
                 if let Some(manager) = oauth_manager {
                     match manager.start_oauth_callback_server().await {

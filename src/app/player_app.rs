@@ -290,6 +290,9 @@ impl MusicPlayerApp {
                 log::info!("[PLAY] Playback started - is_playing={}", self.audio.is_playing);
                 self.audio.track_start_time = Some(Instant::now());
                 
+                // Reset the track finished flag for the new track
+                self.audio.track_finished_handled = false;
+                
                 // Record this track to playback history (only when actually played)
                 crate::app::queue::record_track_to_history(&track);
                 
@@ -906,6 +909,12 @@ impl MusicPlayerApp {
         // Only check for track completion if we're currently playing (not paused)
         // This prevents false positives when sink is empty due to pause state
         if self.audio.is_playing && self.audio.audio_controller.is_finished() {
+            // DEBOUNCE: If we already handled this track finish, don't handle it again
+            // This prevents the event loop from triggering 30+ times per second
+            if self.audio.track_finished_handled {
+                return;
+            }
+            
             // Additional check: ensure we have a valid track and it's actually started
             // track_start_time is set after audio successfully loads, so this prevents
             // false positives during the loading phase
@@ -919,6 +928,9 @@ impl MusicPlayerApp {
                     return;
                 }
             }
+            
+            // Mark as handled BEFORE processing to prevent re-entry during the same track
+            self.audio.track_finished_handled = true;
             
             log::info!("Track finished, handling auto-play/stop");
             
@@ -1934,15 +1946,8 @@ impl eframe::App for MusicPlayerApp {
                 self.ui.toast_manager.render(ui);
             });
 
-        // Optimized repaint: only request when playing, loading, or toasts active
-        if self.audio.is_playing 
-            || self.content.search_loading 
-            || self.content.home_loading 
-            || !self.ui.toast_manager.toasts.is_empty() 
-            || self.ui.artwork_loading
-        {
-            ctx.request_repaint();
-        }
+        // Repaint is already handled by request_repaint_after() throttling earlier
+        // (30 FPS in CPU mode when playing, 20 FPS idle)
     }
 }
 

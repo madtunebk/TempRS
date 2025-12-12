@@ -208,7 +208,10 @@ fn perform_search(app: &mut MusicPlayerApp) {
     app.tasks.search_rx = Some(rx);
 
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         rt.block_on(async {
             match search_type {
                 SearchType::Tracks => {

@@ -2,11 +2,18 @@ use std::sync::{Mutex, MutexGuard};
 use std::sync::atomic::{AtomicU32, Ordering};
 use tokio::runtime::Runtime;
 
-/// Creates a Tokio runtime with error handling instead of panicking
+/// Creates a lightweight single-threaded Tokio runtime
+///
+/// Uses current_thread scheduler to avoid thread explosion (default multi-threaded
+/// runtime spawns N worker threads where N = CPU cores). Multiple runtimes across
+/// the app would create excessive threads (20+ on 4-core CPU).
 ///
 /// Returns `Ok(Runtime)` if successful, or `Err(String)` with error message
 pub fn create_runtime() -> Result<Runtime, String> {
-    Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("Failed to create runtime: {}", e))
 }
 
 /// Safely locks a mutex with poisoning recovery

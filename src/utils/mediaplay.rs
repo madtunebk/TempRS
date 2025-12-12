@@ -186,7 +186,10 @@ impl AudioPlayer {
         
         // Spawn streaming thread that sends to audio + FFT download channel
         let stream_thread = std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
             rt.block_on(async {
                 if let Err(e) = stream_audio(&url_owned, &token_owned, &cache_key, sample_tx, fft_download_tx, finished_clone).await {
                     log::error!("[AudioPlayer] Streaming error: {}", e);
@@ -433,7 +436,10 @@ impl AudioPlayer {
             // Spawn new streaming thread from offset using actual URL
             let actual_url_clone = actual_url.clone();
             std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
                 rt.block_on(async {
                     if let Err(e) = stream_from_actual_url(&actual_url_clone, byte_offset, sample_tx, fft_download_tx, finished_clone).await {
                         log::error!("[AudioPlayer] Seek streaming error: {}", e);

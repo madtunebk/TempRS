@@ -27,13 +27,14 @@ pub struct AudioState {
     pub mid_energy: Arc<AtomicU32>,
     pub high_energy: Arc<AtomicU32>,
 
-    // Playback Control (6 fields)
+    // Playback Control (7 fields)
     pub is_playing: bool,
     pub shuffle_mode: bool,
     pub repeat_mode: RepeatMode,
     pub volume: f32,
     pub muted: bool,
     pub volume_before_mute: f32,
+    pub track_finished_handled: bool,  // Debounce flag to prevent repeated "track finished" triggers
 }
 
 impl Default for AudioState {
@@ -77,6 +78,7 @@ impl AudioState {
             volume: 1.0,
             muted: false,
             volume_before_mute: 1.0,
+            track_finished_handled: false,
         }
     }
 

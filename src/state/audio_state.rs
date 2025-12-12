@@ -35,6 +35,12 @@ pub struct AudioState {
     pub muted: bool,
     pub volume_before_mute: f32,
     pub track_finished_handled: bool,  // Debounce flag to prevent repeated "track finished" triggers
+
+    // Stream URL Prefetch (4 fields) - reduces auto-play latency and prevents network errors
+    pub prefetch_cdn_url: Option<String>,      // Pre-fetched CDN redirect URL
+    pub prefetch_timestamp: Option<Instant>,    // When the prefetch occurred
+    pub prefetched_for_track_id: Option<u64>,  // Track ID this prefetch is for
+    pub prefetch_triggered: bool,               // Prevent duplicate prefetch attempts
 }
 
 impl Default for AudioState {
@@ -79,6 +85,10 @@ impl AudioState {
             muted: false,
             volume_before_mute: 1.0,
             track_finished_handled: false,
+            prefetch_cdn_url: None,
+            prefetch_timestamp: None,
+            prefetched_for_track_id: None,
+            prefetch_triggered: false,
         }
     }
 
@@ -111,5 +121,25 @@ impl AudioState {
         self.current_permalink_url = None;
         self.track_start_time = None;
         self.is_playing = false;
+    }
+
+    /// Clear prefetch cache
+    pub fn clear_prefetch(&mut self) {
+        self.prefetch_cdn_url = None;
+        self.prefetch_timestamp = None;
+        self.prefetched_for_track_id = None;
+        self.prefetch_triggered = false;
+    }
+
+    /// Check if prefetched CDN URL is still valid (< 5 minutes old)
+    pub fn has_valid_prefetch(&self, track_id: u64) -> bool {
+        if self.prefetched_for_track_id != Some(track_id) {
+            return false;
+        }
+        if let (Some(_), Some(timestamp)) = (&self.prefetch_cdn_url, self.prefetch_timestamp) {
+            timestamp.elapsed() < std::time::Duration::from_secs(300) // 5 minutes
+        } else {
+            false
+        }
     }
 }

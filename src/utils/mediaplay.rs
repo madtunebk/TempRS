@@ -7,6 +7,12 @@ use std::time::{Duration, Instant};
 #[allow(dead_code)]
 const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks for streaming
 
+// Adaptive timeout constants for different streaming phases
+const TIMEOUT_INITIAL_BUFFERING: Duration = Duration::from_secs(12);  // Initial load: API + CDN + buffer
+const TIMEOUT_MID_PLAYBACK: Duration = Duration::from_secs(5);         // Mid-stream: sample flow only
+const TIMEOUT_HISTORY_TRACK: Duration = Duration::from_secs(15);       // DB tracks: extra API fetch time
+const MIN_BUFFERING_SAMPLES: usize = 88200;  // 2 seconds @ 44.1kHz (increased from 1s)
+
 pub struct AudioPlayer {
     sink: Sink,
     _stream: OutputStream,
@@ -20,6 +26,7 @@ pub struct AudioPlayer {
     #[allow(dead_code)]
     current_token: String,
     current_volume: f32,
+    is_history_track: bool,  // Track whether this is a history DB track (for adaptive timeout)
     #[allow(dead_code)]
     stream_thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -37,10 +44,23 @@ struct StreamingSource {
     last_sample_time: Instant,  // Detect stream timeout
     fft_tx: Option<Sender<Vec<i16>>>,  // Send samples to FFT as they're played
     fft_buffer: Vec<i16>,  // Buffer for sending to FFT
+
+    // Adaptive timeout fields
+    is_history_track: bool,           // Track from DB (requires longer timeout)
+    initial_buffering_complete: bool, // Separate flag for initial vs mid-stream
+    network_quality_factor: f32,      // 1.0 = good, 1.5 = poor (adjusts timeouts)
 }
 
 impl StreamingSource {
-    fn new(sample_rx: Receiver<Vec<i16>>, sample_rate: u32, channels: u16, finished: Arc<Mutex<bool>>, fft_tx: Option<Sender<Vec<i16>>>) -> Self {
+    fn new(
+        sample_rx: Receiver<Vec<i16>>,
+        sample_rate: u32,
+        channels: u16,
+        finished: Arc<Mutex<bool>>,
+        fft_tx: Option<Sender<Vec<i16>>>,
+        is_history_track: bool,
+        network_quality_factor: f32,
+    ) -> Self {
         Self {
             sample_rx,
             current_samples: Vec::new(),
@@ -53,6 +73,9 @@ impl StreamingSource {
             last_sample_time: Instant::now(),
             fft_tx,
             fft_buffer: Vec::with_capacity(2048),
+            is_history_track,
+            initial_buffering_complete: false,
+            network_quality_factor,
         }
     }
 }
@@ -86,10 +109,16 @@ impl Iterator for StreamingSource {
                 self.sample_index = 0;
                 self.samples_received += self.current_samples.len();
                 self.last_sample_time = Instant::now();
-                
+
                 // Mark as buffered after receiving substantial data
                 if self.buffering && self.samples_received > 44100 {  // ~1 second of audio
                     self.buffering = false;
+                }
+
+                // Mark initial buffering complete after 2 seconds of audio
+                if !self.initial_buffering_complete && self.samples_received > MIN_BUFFERING_SAMPLES {
+                    self.initial_buffering_complete = true;
+                    log::info!("[StreamingSource] Initial buffering complete ({} samples)", self.samples_received);
                 }
                 
                 if !self.current_samples.is_empty() {
@@ -101,22 +130,43 @@ impl Iterator for StreamingSource {
                 }
             }
             Err(_) => {
-                // Detect stream timeout (no data for 5 seconds)
-                let timeout = self.last_sample_time.elapsed() > Duration::from_secs(5);
-                
-                // Check if streaming is finished
+                // Adaptive timeout based on playback phase
+                let base_timeout = if !self.initial_buffering_complete {
+                    // INITIAL BUFFERING: More lenient
+                    if self.is_history_track {
+                        TIMEOUT_HISTORY_TRACK
+                    } else {
+                        TIMEOUT_INITIAL_BUFFERING
+                    }
+                } else {
+                    // MID-PLAYBACK: Strict timeout for stuck detection
+                    TIMEOUT_MID_PLAYBACK
+                };
+
+                // Apply network quality adjustment
+                let adjusted_timeout = Duration::from_secs_f32(
+                    base_timeout.as_secs_f32() * self.network_quality_factor
+                );
+
+                let timeout = self.last_sample_time.elapsed() > adjusted_timeout;
                 let is_finished = *self.finished.lock().unwrap();
-                
-                if is_finished && !self.buffering {
+
+                if is_finished && self.initial_buffering_complete {
                     // Stream ended cleanly after buffering completed
                     None
                 } else if timeout {
                     // Stream stuck - force end to prevent infinite silence
-                    log::error!("[StreamingSource] Stream timeout detected - ending playback");
+                    log::error!(
+                        "[StreamingSource] Stream timeout after {:?} (phase: {}, quality: {:.1}x, timeout: {:?})",
+                        self.last_sample_time.elapsed(),
+                        if self.initial_buffering_complete { "playback" } else { "buffering" },
+                        self.network_quality_factor,
+                        adjusted_timeout
+                    );
                     *self.finished.lock().unwrap() = true;
                     None
                 } else {
-                    // Yield silence while waiting for more data (still buffering or stream active)
+                    // Yield silence while waiting for more data
                     Some(0)
                 }
             }
@@ -152,6 +202,7 @@ impl AudioPlayer {
         bass_energy: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
         mid_energy: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
         high_energy: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
+        is_history_track: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let fft_enabled = bass_energy.is_some();
         if fft_enabled {
@@ -191,7 +242,8 @@ impl AudioPlayer {
                 .build()
                 .unwrap();
             rt.block_on(async {
-                if let Err(e) = stream_audio(&url_owned, &token_owned, &cache_key, sample_tx, fft_download_tx, finished_clone).await {
+                // TODO: Pass prefetched CDN URL from AudioState
+                if let Err(e) = stream_audio(&url_owned, &token_owned, &cache_key, sample_tx, fft_download_tx, finished_clone, None).await {
                     log::error!("[AudioPlayer] Streaming error: {}", e);
                 }
             });
@@ -280,7 +332,9 @@ impl AudioPlayer {
             sample_rate,
             channels,
             finished,
-            if fft_enabled { Some(fft_playback_tx) } else { None }
+            if fft_enabled { Some(fft_playback_tx) } else { None },
+            is_history_track,
+            1.0, // network_quality_factor: 1.0 = good (TODO: pass from AudioState)
         );
         
         let sink = Sink::try_new(&stream_handle)?;
@@ -309,6 +363,7 @@ impl AudioPlayer {
             current_url: url.to_string(),
             current_token: token.to_string(),
             current_volume: 1.0,
+            is_history_track,
             stream_thread: Some(stream_thread),
         })
     }
@@ -382,12 +437,12 @@ impl AudioPlayer {
         let bytes_per_second = 16_000;
         let byte_offset = position.as_secs() * bytes_per_second;
 
-        // Retry seek up to 3 times (CDN can be flaky)
+        // Retry seek up to 3 times (network/CDN can be flaky)
         let mut last_error = None;
         for attempt in 1..=3 {
             log::info!("[Seeking] Attempt {}/3 to seek to {:?}", attempt, position);
-            
-            // Get redirect Location header without following
+
+            // Get redirect Location header without following - with retry logic
             let client = crate::utils::http::no_redirect_client();
             log::info!("[Seeking] Getting redirect Location header...");
             let response = match client
@@ -398,7 +453,7 @@ impl AudioPlayer {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    log::warn!("[Seeking] Failed to get redirect on attempt {}/3: {}", attempt, e);
+                    log::warn!("[Seeking] Redirect request failed on attempt {}/3: {}", attempt, e);
                     last_error = Some(e.into());
                     if attempt < 3 {
                         tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempt as u64)).await;
@@ -526,7 +581,9 @@ impl AudioPlayer {
                 sample_rate,
                 channels,
                 finished,
-                if fft_enabled { Some(fft_playback_tx) } else { None }
+                if fft_enabled { Some(fft_playback_tx) } else { None },
+                self.is_history_track,
+                1.0, // network_quality_factor: 1.0 = good (TODO: pass from AudioState)
             );
             
             let new_sink = Sink::try_new(&self.stream_handle)?;
@@ -693,6 +750,47 @@ async fn stream_from_actual_url(
     Ok(())
 }
 
+/// Prefetch CDN redirect URL for a track (for auto-play optimization)
+/// Returns the actual CDN URL that can be used for streaming
+pub async fn prefetch_stream_url(
+    stream_api_url: &str,
+    token: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    log::info!("[Prefetch] Getting CDN URL for next track...");
+    let client = crate::utils::http::no_redirect_client();
+
+    // Retry up to 3 times on network errors
+    for attempt in 1..=3 {
+        match client
+            .get(stream_api_url)
+            .header("Authorization", format!("OAuth {}", token))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                // Extract Location header (the actual CDN URL)
+                if let Some(location) = response.headers().get("location") {
+                    if let Ok(cdn_url) = location.to_str() {
+                        log::info!("[Prefetch] Successfully prefetched CDN URL (attempt {})", attempt);
+                        return Ok(cdn_url.to_string());
+                    }
+                }
+                return Err("No Location header in redirect".into());
+            }
+            Err(e) => {
+                log::warn!("[Prefetch] Request failed on attempt {}/3: {}", attempt, e);
+                if attempt < 3 {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempt as u64)).await;
+                } else {
+                    return Err(format!("Failed to prefetch after 3 attempts: {}", e).into());
+                }
+            }
+        }
+    }
+
+    Err("Prefetch failed after retries".into())
+}
+
 /// Stream audio data progressively and decode with minimp3
 async fn stream_audio(
     url: &str,
@@ -701,23 +799,50 @@ async fn stream_audio(
     sample_tx: Sender<Vec<i16>>,
     fft_tx: Sender<Vec<i16>>,
     finished: Arc<Mutex<bool>>,
+    prefetched_cdn_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Get redirect Location header without following
-    log::info!("[Streaming] Getting actual media URL from redirect...");
-    let client = crate::utils::http::no_redirect_client();
-    let response = client
-        .get(url)
-        .header("Authorization", format!("OAuth {}", token))
-        .send()
-        .await?;
-    
-    // Extract Location header
-    let actual_url = response
-        .headers()
-        .get("location")
-        .ok_or("No Location header in redirect")?
-        .to_str()?
-        .to_string();
+    // Use prefetched CDN URL if available, otherwise fetch redirect
+    let actual_url = if let Some(cdn_url) = prefetched_cdn_url {
+        log::info!("[Streaming] Using prefetched CDN URL (skipping redirect fetch)");
+        cdn_url
+    } else {
+        log::info!("[Streaming] Getting actual media URL from redirect...");
+        let client = crate::utils::http::no_redirect_client();
+
+        // Retry up to 3 times on network errors
+        let mut response = None;
+        for attempt in 1..=3 {
+            match client
+                .get(url)
+                .header("Authorization", format!("OAuth {}", token))
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    response = Some(resp);
+                    break;
+                }
+                Err(e) => {
+                    log::warn!("[Streaming] Redirect request failed on attempt {}/3: {}", attempt, e);
+                    if attempt < 3 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempt as u64)).await;
+                    } else {
+                        return Err(format!("Failed to get stream redirect after 3 attempts: {}", e).into());
+                    }
+                }
+            }
+        }
+
+        let response = response.ok_or("Failed to get redirect response")?;
+
+        // Extract Location header
+        response
+            .headers()
+            .get("location")
+            .ok_or("No Location header in redirect")?
+            .to_str()?
+            .to_string()
+    };
     
     log::info!("[Streaming] Streaming from actual URL: {}", actual_url);
     

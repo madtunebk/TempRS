@@ -37,6 +37,9 @@ pub struct BackgroundTasks {
 
     // Artwork
     pub artwork_rx: Option<Receiver<ColorImage>>,
+
+    // Stream URL Prefetch (track_id, cdn_url)
+    pub prefetch_rx: Option<Receiver<(u64, String)>>,
 }
 
 
@@ -56,6 +59,7 @@ impl BackgroundTasks {
             || self.playlists_rx.is_some()
             || self.user_avatar_rx.is_some()
             || self.artwork_rx.is_some()
+            || self.prefetch_rx.is_some()
     }
 
     /// Clear all task receivers (for cleanup)
@@ -72,5 +76,6 @@ impl BackgroundTasks {
         self.playlists_rx = None;
         self.user_avatar_rx = None;
         self.artwork_rx = None;
+        self.prefetch_rx = None;
     }
 }

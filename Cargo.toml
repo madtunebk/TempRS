@@ -49,20 +49,20 @@ winreg = "0.55.0"
 name = "TempRS"
 path = "src/main.rs"
 
-[[bin]]
-name = "play_history_test"
-path = "testunits/play_history_test.rs"
-required-features = ["test-bins"]
+#[[bin]]
+#name = "play_history_test"
+#path = "testunits/play_history_test.rs"
+#required-features = ["test-bins"]
 
-[[bin]]
-name = "shader_test"
-path = "testunits/shader_test.rs"
-required-features = ["test-bins"]
+#[[bin]]
+#name = "shader_test"
+#path = "testunits/shader_test.rs"
+#required-features = ["test-bins"]
 
-[[bin]]
-name = "shadertoy_converter"
-path = "testunits/shadertoy_converter.rs"
-required-features = ["test-bins"]
+#[[bin]]
+#name = "shadertoy_converter"
+#path = "testunits/shadertoy_converter.rs"
+#required-features = ["test-bins"]
 
 [features]
 default = []

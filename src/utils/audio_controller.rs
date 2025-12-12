@@ -9,6 +9,7 @@ pub enum AudioCommand {
         token: String,
         track_id: u64,
         duration_ms: u64,
+        is_history_track: bool,
     },
     Pause,
     Resume,
@@ -65,11 +66,11 @@ impl AudioController {
                 // Handle commands
                 while let Ok(cmd) = command_rx.try_recv() {
                     match cmd {
-                        AudioCommand::Play { url, token, track_id, duration_ms } => {
+                        AudioCommand::Play { url, token, track_id, duration_ms, is_history_track } => {
                             let duration_secs = duration_ms / 1000;
                             let duration_mins = duration_secs / 60;
-                            log::info!("[AudioController] Received Play command for track {} (duration: {}ms = {}:{:02})", 
-                                track_id, duration_ms, duration_mins, duration_secs % 60);
+                            log::info!("[AudioController] Received Play command for track {} (duration: {}ms = {}:{:02}, history: {})",
+                                track_id, duration_ms, duration_mins, duration_secs % 60, is_history_track);
 
                             // Reset finished flag BEFORE loading new track
                             if let Some(mut lock) = crate::utils::error_handling::safe_lock(&is_finished_clone, "AudioController") {
@@ -99,6 +100,7 @@ impl AudioController {
                                 bass_energy.as_ref().map(Arc::clone),
                                 mid_energy.as_ref().map(Arc::clone),
                                 high_energy.as_ref().map(Arc::clone),
+                                is_history_track,
                             )) {
                                 Ok(mut p) => {
                                     log::info!("[AudioController] Audio playback started");
@@ -204,8 +206,8 @@ impl AudioController {
         }
     }
 
-    pub fn play(&self, url: String, token: String, track_id: u64, duration_ms: u64) {
-        let _ = self.command_tx.send(AudioCommand::Play { url, token, track_id, duration_ms });
+    pub fn play(&self, url: String, token: String, track_id: u64, duration_ms: u64, is_history_track: bool) {
+        let _ = self.command_tx.send(AudioCommand::Play { url, token, track_id, duration_ms, is_history_track });
     }
 
     pub fn pause(&self) {

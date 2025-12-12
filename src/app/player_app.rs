@@ -284,14 +284,26 @@ impl MusicPlayerApp {
         // Start playback if we have a stream URL
         if let (Some(stream_url), Some(oauth)) = (&self.audio.current_stream_url, &self.auth.oauth_manager) {
             if let Some(token) = crate::utils::token_helper::get_valid_token_sync(oauth) {
-                log::info!("Playing: {} by {} (duration: {}ms)", self.audio.current_title, self.audio.current_artist, self.audio.current_duration_ms);
-                self.audio.audio_controller.play(stream_url.clone(), token.access_token.clone(), track.id, self.audio.current_duration_ms);
+                // Detect history DB tracks: they typically have full_duration=None and were fetched on-demand
+                let is_history_track = track.full_duration.is_none() && track.permalink_url.is_none();
+                log::info!("Playing: {} by {} (duration: {}ms, history: {})",
+                    self.audio.current_title, self.audio.current_artist, self.audio.current_duration_ms, is_history_track);
+                self.audio.audio_controller.play(
+                    stream_url.clone(),
+                    token.access_token.clone(),
+                    track.id,
+                    self.audio.current_duration_ms,
+                    is_history_track
+                );
                 self.audio.is_playing = true;
                 log::info!("[PLAY] Playback started - is_playing={}", self.audio.is_playing);
                 self.audio.track_start_time = Some(Instant::now());
-                
+
                 // Reset the track finished flag for the new track
                 self.audio.track_finished_handled = false;
+
+                // Reset prefetch trigger for the new track
+                self.audio.prefetch_triggered = false;
                 
                 // Record this track to playback history (only when actually played)
                 crate::app::queue::record_track_to_history(&track);
@@ -902,6 +914,109 @@ impl MusicPlayerApp {
         self.content.app_state.clear_token();
 
         // Shader manager retains shaders across logout - no need to reinitialize
+    }
+
+    /// Check playback progress and trigger prefetch at 70-80%
+    pub fn check_prefetch_trigger(&mut self) {
+        // Only prefetch if:
+        // 1. Currently playing
+        // 2. Not already triggered for this track
+        // 3. Next track exists
+        // 4. Progress is 70-80%
+
+        if !self.audio.is_playing || self.audio.prefetch_triggered {
+            return;
+        }
+
+        let position = self.audio.audio_controller.get_position();
+        let duration = Duration::from_millis(self.audio.current_duration_ms);
+
+        if duration.as_secs() == 0 {
+            return; // Avoid division by zero
+        }
+
+        let progress = position.as_secs_f32() / duration.as_secs_f32();
+
+        // Trigger between 70-80% (only once per track)
+        if progress >= 0.70 && progress <= 0.80 {
+            // Extract data we need before calling trigger_prefetch (to avoid borrow checker issues)
+            if let Some(next_track) = self.audio.playback_queue.peek_next() {
+                let track_id = next_track.id;
+                let stream_url = next_track.stream_url.clone();
+                self.trigger_prefetch(track_id, stream_url.as_deref());
+            }
+        }
+    }
+
+    /// Trigger prefetch for next track's CDN URL
+    fn trigger_prefetch(&mut self, track_id: u64, stream_url: Option<&str>) {
+        // Skip if already prefetched for this track
+        if self.audio.has_valid_prefetch(track_id) {
+            log::debug!("[Prefetch] Valid cache exists for track {}", track_id);
+            return;
+        }
+
+        // Mark as triggered to prevent duplicate requests
+        self.audio.prefetch_triggered = true;
+
+        let stream_url = match stream_url {
+            Some(url) => url.to_string(),
+            None => {
+                log::warn!("[Prefetch] Track {} has no stream_url, skipping prefetch", track_id);
+                return;
+            }
+        };
+
+        let token = match &self.auth.oauth_manager {
+            Some(oauth) => match crate::utils::token_helper::get_valid_token_sync(oauth) {
+                Some(t) => t.access_token.clone(),
+                None => {
+                    log::warn!("[Prefetch] No valid token");
+                    return;
+                }
+            },
+            None => return,
+        };
+
+        log::info!("[Prefetch] Starting prefetch for track {} at 70-80% progress", track_id);
+
+        let (tx, rx) = channel();
+        self.tasks.prefetch_rx = Some(rx);
+
+        // Spawn prefetch in background
+        std::thread::spawn(move || {
+            let rt = match crate::utils::error_handling::create_runtime() {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("[Prefetch] Failed to create runtime: {}", e);
+                    return;
+                }
+            };
+            rt.block_on(async {
+                match crate::utils::mediaplay::prefetch_stream_url(&stream_url, &token).await {
+                    Ok(cdn_url) => {
+                        log::info!("[Prefetch] Successfully prefetched CDN URL for track {}", track_id);
+                        let _ = tx.send((track_id, cdn_url));
+                    }
+                    Err(e) => {
+                        log::warn!("[Prefetch] Failed to prefetch for track {}: {}", track_id, e);
+                    }
+                }
+            });
+        });
+    }
+
+    /// Check for prefetch completion
+    pub fn check_prefetch_updates(&mut self) {
+        if let Some(rx) = &self.tasks.prefetch_rx {
+            if let Ok((track_id, cdn_url)) = rx.try_recv() {
+                log::info!("[Prefetch] Received CDN URL for track {}", track_id);
+                self.audio.prefetch_cdn_url = Some(cdn_url);
+                self.audio.prefetch_timestamp = Some(Instant::now());
+                self.audio.prefetched_for_track_id = Some(track_id);
+                self.tasks.prefetch_rx = None;
+            }
+        }
     }
 
     /// Check if track finished and handle auto-play
@@ -1676,21 +1791,37 @@ impl MusicPlayerApp {
                         }
                     };
                     rt.block_on(async {
-                        match crate::app::playlists::fetch_track_by_id(&token, track_id).await {
-                            Ok(track) => {
-                                log::info!("[Home] Fetched track: {}", track.title);
-                                let _ = tx.send(Ok(vec![track]));
+                        // TIMEOUT WRAPPER: Fail fast if API is unresponsive (10s max)
+                        let fetch_result = tokio::time::timeout(
+                            Duration::from_secs(10),
+                            crate::app::playlists::fetch_track_by_id(&token, track_id)
+                        ).await;
+
+                        match fetch_result {
+                            Ok(Ok(track)) => {
+                                // VALIDATE BEFORE RETURNING
+                                if !crate::utils::track_filter::is_track_playable(&track) {
+                                    log::warn!("[Fetch] Track {} is not playable (geo-blocked or restricted)", track_id);
+                                    let _ = tx.send(Ok(vec![])); // Empty = auto-skip
+                                } else {
+                                    log::info!("[Fetch] Fetched playable track: {}", track.title);
+                                    let _ = tx.send(Ok(vec![track]));
+                                }
                             }
-                            Err(e) => {
+                            Ok(Err(e)) => {
                                 let err_msg = e.to_string();
                                 // Check if it's a "not playable" or "restricted" error - treat as warning, not fatal
                                 if err_msg.contains("not playable") || err_msg.contains("not available") || err_msg.contains("restricted") {
-                                    log::warn!("[Home] Skipping unavailable track {}: {}", track_id, e);
+                                    log::warn!("[Fetch] Skipping unavailable track {}: {}", track_id, e);
                                     let _ = tx.send(Ok(vec![])); // Return empty instead of error - triggers auto-skip
                                 } else {
-                                    log::error!("[Home] Failed to fetch track {}: {}", track_id, e);
+                                    log::error!("[Fetch] Failed to fetch track {}: {}", track_id, e);
                                     let _ = tx.send(Err(err_msg));
                                 }
+                            }
+                            Err(_) => {
+                                log::error!("[Fetch] Timeout fetching track {} after 10 seconds", track_id);
+                                let _ = tx.send(Err("API timeout (10s exceeded)".to_string()));
                             }
                         }
                     });
@@ -1913,6 +2044,10 @@ impl eframe::App for MusicPlayerApp {
 
         // Check if token has expired (every 60 seconds)
         self.check_token_expiry();
+
+        // Check prefetch progress and completion
+        self.check_prefetch_trigger();
+        self.check_prefetch_updates();
 
         // Check if track finished for auto-play
         if matches!(self.ui.screen, AppScreen::Main) {

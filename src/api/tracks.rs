@@ -91,7 +91,7 @@ pub async fn load_next_search_page_smart(
 
     while all_playable_tracks.len() < min_results && next_url.is_some() {
         let url = next_url.clone().unwrap();
-        
+
         let response = crate::utils::http::retry_get_with_auth(&url, token).await?;
 
         if !response.status().is_success() {
@@ -103,10 +103,10 @@ pub async fn load_next_search_page_smart(
         }
 
         let search_response: SearchTracksResponse = response.json().await?;
-        
+
         let playable_from_page =
             crate::utils::track_filter::filter_playable_tracks(search_response.collection);
-        
+
         all_playable_tracks.extend(playable_from_page);
         next_url = search_response.next_href;
     }
@@ -115,4 +115,36 @@ pub async fn load_next_search_page_smart(
         collection: all_playable_tracks,
         next_href: next_url,
     })
+}
+
+/// Fetch multiple tracks by IDs in parallel (max 10 concurrent)
+/// Useful for batch loading history DB tracks or playlists
+pub async fn fetch_tracks_batch(
+    token: &str,
+    track_ids: Vec<u64>,
+) -> Vec<Track> {
+    use futures_util::stream::{self, StreamExt};
+
+    log::info!("[BatchFetch] Fetching {} tracks in parallel (max 10 concurrent)", track_ids.len());
+
+    let results = stream::iter(track_ids)
+        .map(|track_id| {
+            let token = token.to_string();
+            async move {
+                match fetch_track_by_id(&token, track_id).await {
+                    Ok(track) => Some(track),
+                    Err(e) => {
+                        log::warn!("[BatchFetch] Failed to fetch track {}: {}", track_id, e);
+                        None
+                    }
+                }
+            }
+        })
+        .buffer_unordered(10)  // Max 10 concurrent requests
+        .collect::<Vec<_>>()
+        .await;
+
+    let tracks: Vec<Track> = results.into_iter().flatten().collect();
+    log::info!("[BatchFetch] Successfully fetched {} out of {} tracks", tracks.len(), tracks.len());
+    tracks
 }

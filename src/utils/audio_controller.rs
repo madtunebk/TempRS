@@ -159,6 +159,13 @@ impl AudioController {
                         }
                         AudioCommand::Seek(pos) => {
                             log::debug!("[AudioController] Received Seek command to {:?}", pos);
+
+                            // Reset finished flag BEFORE seeking to prevent false "track finished" detection
+                            if let Some(mut lock) = crate::utils::error_handling::safe_lock(&is_finished_clone, "AudioController") {
+                                *lock = false;
+                                log::debug!("[AudioController] Reset is_finished flag before seek");
+                            }
+
                             if let Some(p) = player.as_mut() {
                                 let url = crate::utils::error_handling::safe_lock(&current_url_clone, "AudioController")
                                     .and_then(|lock| lock.clone());
@@ -174,6 +181,8 @@ impl AudioController {
                                         high_energy.as_ref().map(Arc::clone),
                                     )) {
                                         log::error!("[AudioController] Seek error: {}", e);
+                                    } else {
+                                        log::debug!("[AudioController] Seek completed successfully");
                                     }
                                 }
                             }

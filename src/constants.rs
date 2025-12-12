@@ -17,7 +17,7 @@ pub const DOMINANT_COLOR_RGB: (u8, u8, u8) = (255, 85, 0); // SoundCloud orange
 pub const VOLUME_STEP: f32 = 0.1;
 pub const DEFAULT_VOLUME_BEFORE_MUTE: f32 = 0.7;
 pub const SEEK_STEP_SECS: u64 = 10;
-pub const MIN_TRACK_ELAPSED_SECS: u64 = 1;
+pub const MIN_TRACK_ELAPSED_SECS: u64 = 3;  // Prevent instant auto-advance, gives buffer for seeks
 
 // === API & Content ===
 pub const HOME_RECOMMENDATIONS_LIMIT: usize = 6;

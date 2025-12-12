@@ -1,6 +1,7 @@
 use rodio::{OutputStream, Sink, Source};
 use minimp3::{Decoder as Mp3Decoder, Frame};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -29,6 +30,7 @@ pub struct AudioPlayer {
     is_history_track: bool,  // Track whether this is a history DB track (for adaptive timeout)
     #[allow(dead_code)]
     stream_thread: Option<std::thread::JoinHandle<()>>,
+    shutdown_signal: Arc<AtomicBool>,  // Signal streaming thread to stop
 }
 
 /// Progressive streaming source that decodes MP3 chunks as they arrive
@@ -230,11 +232,15 @@ impl AudioPlayer {
         
         let finished = Arc::new(Mutex::new(false));
         let finished_clone = Arc::clone(&finished);
-        
+
+        // Create shutdown signal for graceful thread termination
+        let shutdown_signal = Arc::new(AtomicBool::new(false));
+        let shutdown_clone = Arc::clone(&shutdown_signal);
+
         let url_owned = url.to_string();
         let token_owned = token.to_string();
         let cache_key = format!("audio_{}", track_id);
-        
+
         // Spawn streaming thread that sends to audio + FFT download channel
         let stream_thread = std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
@@ -243,7 +249,7 @@ impl AudioPlayer {
                 .unwrap();
             rt.block_on(async {
                 // TODO: Pass prefetched CDN URL from AudioState
-                if let Err(e) = stream_audio(&url_owned, &token_owned, &cache_key, sample_tx, fft_download_tx, finished_clone, None).await {
+                if let Err(e) = stream_audio(&url_owned, &token_owned, &cache_key, sample_tx, fft_download_tx, finished_clone, shutdown_clone, None).await {
                     log::error!("[AudioPlayer] Streaming error: {}", e);
                 }
             });
@@ -365,6 +371,7 @@ impl AudioPlayer {
             current_volume: 1.0,
             is_history_track,
             stream_thread: Some(stream_thread),
+            shutdown_signal,
         })
     }
 
@@ -389,8 +396,28 @@ impl AudioPlayer {
     }
 
     pub fn stop(&mut self) {
-        log::debug!("[AudioPlayer] Stopping playback");
+        log::debug!("[AudioPlayer] Stopping playback and cleaning up streaming thread");
+
+        // Signal streaming thread to stop
+        self.shutdown_signal.store(true, Ordering::Relaxed);
+
+        // Stop sink
         self.sink.stop();
+
+        // Spawn detached cleanup thread - doesn't block caller
+        if let Some(thread) = self.stream_thread.take() {
+            log::debug!("[Cleanup] Spawning detached cleanup for old streaming thread");
+
+            std::thread::spawn(move || {
+                log::debug!("[Cleanup] Waiting for old streaming thread to terminate...");
+                let start = std::time::Instant::now();
+                while !thread.is_finished() && start.elapsed() < Duration::from_secs(2) {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                let _ = thread.join();
+                log::debug!("[Cleanup] Old streaming thread terminated");
+            });
+        }
     }
 
     pub fn set_volume(&mut self, volume: f32) {
@@ -399,7 +426,29 @@ impl AudioPlayer {
     }
 
     pub fn is_finished(&self) -> bool {
-        self.sink.empty() && self.paused_at.is_none()
+        if self.paused_at.is_some() {
+            return false;
+        }
+
+        // Check if sink is empty
+        if !self.sink.empty() {
+            return false;
+        }
+
+        // ADDITIONAL CHECK: Verify we're actually near the end
+        if let Some(total_duration) = self.total_duration {
+            let current_pos = self.get_position();
+
+            // Only consider finished if within last 2 seconds OR past end
+            let time_remaining = total_duration.saturating_sub(current_pos);
+            if time_remaining > Duration::from_secs(2) {
+                log::debug!("[AudioPlayer] Sink empty but {} seconds remaining - not finished",
+                    time_remaining.as_secs());
+                return false;
+            }
+        }
+
+        true
     }
 
     pub fn get_duration(&self) -> Option<Duration> {
@@ -408,14 +457,28 @@ impl AudioPlayer {
 
     pub fn get_position(&self) -> Duration {
         if let Some(paused) = self.paused_at {
-            paused
-        } else {
-            let elapsed = self.start_time.elapsed();
-            let mut position = self.start_position.saturating_add(elapsed);
+            return paused;
+        }
+
+        // Calculate position based on wall clock
+        let elapsed = self.start_time.elapsed();
+        let calculated_pos = self.start_position.saturating_add(elapsed);
+
+        // If sink is empty AND we've reached/passed the end, STOP incrementing
+        if self.sink.empty() {
             if let Some(total) = self.total_duration {
-                position = position.min(total);
+                if calculated_pos >= total {
+                    log::debug!("[Position] Sink empty and past end - clamping to total duration");
+                    return total;
+                }
             }
-            position
+        }
+
+        // Otherwise return calculated position, clamped to total
+        if let Some(total) = self.total_duration {
+            calculated_pos.min(total)
+        } else {
+            calculated_pos
         }
     }
 
@@ -428,10 +491,28 @@ impl AudioPlayer {
         mid_energy: Option<Arc<std::sync::atomic::AtomicU32>>,
         high_energy: Option<Arc<std::sync::atomic::AtomicU32>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!("[AudioPlayer] Seeking to {:?} by restarting stream...", position);
+        log::info!("[AudioPlayer] Seeking to {:?}, stopping old stream...", position);
 
-        // Stop current playback
+        // STEP 1: Signal old streaming thread to stop
+        self.shutdown_signal.store(true, Ordering::Relaxed);
+
+        // STEP 2: Stop current playback
         self.sink.stop();
+
+        // STEP 3: Spawn detached cleanup thread - doesn't block caller
+        if let Some(thread) = self.stream_thread.take() {
+            log::debug!("[Cleanup] Spawning detached cleanup for old streaming thread");
+
+            std::thread::spawn(move || {
+                log::debug!("[Cleanup] Waiting for old streaming thread to terminate...");
+                let start = std::time::Instant::now();
+                while !thread.is_finished() && start.elapsed() < Duration::from_secs(2) {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                let _ = thread.join();
+                log::debug!("[Cleanup] Old streaming thread terminated");
+            });
+        }
 
         // Estimate byte offset (MP3 is typically 128kbps = 16KB/s)
         let bytes_per_second = 16_000;
@@ -481,26 +562,33 @@ impl AudioPlayer {
             
             log::info!("[Seeking] Got actual CDN URL from Location header");
 
+            // STEP 4: Create NEW shutdown signal for new streaming thread
+            self.shutdown_signal = Arc::new(AtomicBool::new(false));
+            let shutdown_clone = Arc::clone(&self.shutdown_signal);
+
             // Create new streaming components with dual FFT channels
             let (sample_tx, sample_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
             let (fft_download_tx, fft_download_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
             let (fft_playback_tx, fft_playback_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = channel();
             let finished = Arc::new(Mutex::new(false));
             let finished_clone = Arc::clone(&finished);
-            
-            // Spawn new streaming thread from offset using actual URL
+
+            // STEP 5: Spawn new streaming thread and CAPTURE the JoinHandle
             let actual_url_clone = actual_url.clone();
-            std::thread::spawn(move || {
+            let stream_thread = std::thread::spawn(move || {
                 let rt = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
                     .unwrap();
                 rt.block_on(async {
-                    if let Err(e) = stream_from_actual_url(&actual_url_clone, byte_offset, sample_tx, fft_download_tx, finished_clone).await {
+                    if let Err(e) = stream_from_actual_url(&actual_url_clone, byte_offset, sample_tx, fft_download_tx, finished_clone, shutdown_clone).await {
                         log::error!("[AudioPlayer] Seek streaming error: {}", e);
                     }
                 });
             });
+
+            // STEP 6: UPDATE the stream_thread field (critical!)
+            self.stream_thread = Some(stream_thread);
 
             // Wait briefly for buffering
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -611,6 +699,7 @@ async fn stream_from_actual_url(
     sample_tx: Sender<Vec<i16>>,
     fft_tx: Sender<Vec<i16>>,
     finished: Arc<Mutex<bool>>,
+    shutdown_signal: Arc<AtomicBool>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = crate::utils::http::streaming_client();
     
@@ -653,10 +742,16 @@ async fn stream_from_actual_url(
     let mut buffer_frames_sent = 0;
     
     use futures_util::StreamExt;
-    
+
     let mut stream = response.bytes_stream();
-    
+
     while let Some(chunk_result) = stream.next().await {
+        // Check shutdown signal before processing each chunk
+        if shutdown_signal.load(Ordering::Relaxed) {
+            log::info!("[Streaming] Shutdown signal received, stopping seek download");
+            return Ok(());
+        }
+
         match chunk_result {
             Ok(chunk) => {
                 mp3_buffer.extend_from_slice(&chunk);
@@ -799,6 +894,7 @@ async fn stream_audio(
     sample_tx: Sender<Vec<i16>>,
     fft_tx: Sender<Vec<i16>>,
     finished: Arc<Mutex<bool>>,
+    shutdown_signal: Arc<AtomicBool>,
     prefetched_cdn_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Use prefetched CDN URL if available, otherwise fetch redirect
@@ -897,13 +993,19 @@ async fn stream_audio(
     use futures_util::StreamExt;
     
     let mut stream = streaming_response.bytes_stream();
-    
+
     while let Some(chunk_result) = stream.next().await {
+        // Check shutdown signal before processing each chunk
+        if shutdown_signal.load(Ordering::Relaxed) {
+            log::info!("[Streaming] Shutdown signal received, stopping download");
+            return Ok(());
+        }
+
         match chunk_result {
             Ok(chunk) => {
                 mp3_buffer.extend_from_slice(&chunk);
                 total_downloaded += chunk.len();
-                
+
                 // Decode all frames but only send new ones (original working method)
                 let mut decoder = Mp3Decoder::new(&mp3_buffer[..]);
                 let mut frame_index = 0;

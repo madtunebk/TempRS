@@ -493,7 +493,9 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         if response.clicked() {
             if let Some(pos) = response.interact_pointer_pos() {
                 let seek_progress = ((pos.x - bar_left) / (bar_right - bar_left)).clamp(0.0, 1.0);
-                let seek_position = std::time::Duration::from_secs_f32(duration_secs * seek_progress);
+                // Prevent seeking within last 1 second to avoid auto-advance trigger
+                let max_seek_secs = (duration_secs - 1.0).max(0.0);
+                let seek_position = std::time::Duration::from_secs_f32((duration_secs * seek_progress).min(max_seek_secs));
                 app.seek_to(seek_position);
             }
         }

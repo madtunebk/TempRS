@@ -204,7 +204,11 @@ impl MusicPlayerApp {
     /// Play a track by ID
     pub fn play_track(&mut self, track_id: u64) {
         info!("[PLAY] play_track({}) called - is_playing={}, current_track_id={:?}", track_id, self.audio.is_playing, self.audio.current_track_id);
-        
+
+        // Increment session to invalidate any pending async operations
+        self.audio.playback_session = self.audio.playback_session.wrapping_add(1);
+        log::debug!("[Session] New playback session: {}", self.audio.playback_session);
+
         // Don't send stop command - the audio controller will replace the old player automatically
         // This prevents interrupting the download of new track
         self.audio.is_playing = false; // Temporarily set to false, will be set to true when playback starts
@@ -302,6 +306,9 @@ impl MusicPlayerApp {
                 // Reset the track finished flag for the new track
                 self.audio.track_finished_handled = false;
 
+                // Validate duration sync after a short delay (allow player to initialize)
+                // This will be checked in the update loop
+
                 // Reset prefetch trigger for the new track
                 self.audio.prefetch_triggered = false;
                 
@@ -362,6 +369,11 @@ impl MusicPlayerApp {
     /// Stop playback and reset state (ready to play another track)
     pub fn stop_playback(&mut self) {
         log::info!("[STOP] Stopping playback - clearing track state to hide player controls");
+
+        // Increment session to invalidate any pending async operations
+        self.audio.playback_session = self.audio.playback_session.wrapping_add(1);
+        log::debug!("[Session] Stop playback session: {}", self.audio.playback_session);
+
         self.audio.audio_controller.stop();
         self.audio.is_playing = false;
         self.ui.last_playback_error = None;
@@ -520,6 +532,13 @@ impl MusicPlayerApp {
 
     /// Seek to position
     pub fn seek_to(&mut self, position: Duration) {
+        // Increment session to invalidate any pending async operations
+        self.audio.playback_session = self.audio.playback_session.wrapping_add(1);
+        log::debug!("[Session] Seek session: {}", self.audio.playback_session);
+
+        // Reset prefetch trigger so it can run again after seek
+        self.audio.prefetch_triggered = false;
+
         self.audio.audio_controller.seek(position);
         self.ui.is_seeking = true;
         self.ui.seek_target_pos = Some(position);
@@ -980,6 +999,9 @@ impl MusicPlayerApp {
 
         log::info!("[Prefetch] Starting prefetch for track {} at 70-80% progress", track_id);
 
+        // Capture current session for validation in callback
+        let session = self.audio.playback_session;
+
         let (tx, rx) = channel();
         self.tasks.prefetch_rx = Some(rx);
 
@@ -996,7 +1018,7 @@ impl MusicPlayerApp {
                 match crate::utils::mediaplay::prefetch_stream_url(&stream_url, &token).await {
                     Ok(cdn_url) => {
                         log::info!("[Prefetch] Successfully prefetched CDN URL for track {}", track_id);
-                        let _ = tx.send((track_id, cdn_url));
+                        let _ = tx.send((session, track_id, cdn_url));
                     }
                     Err(e) => {
                         log::warn!("[Prefetch] Failed to prefetch for track {}: {}", track_id, e);
@@ -1009,7 +1031,15 @@ impl MusicPlayerApp {
     /// Check for prefetch completion
     pub fn check_prefetch_updates(&mut self) {
         if let Some(rx) = &self.tasks.prefetch_rx {
-            if let Ok((track_id, cdn_url)) = rx.try_recv() {
+            if let Ok((session, track_id, cdn_url)) = rx.try_recv() {
+                // Guard: Only apply prefetch if session matches
+                if session != self.audio.playback_session {
+                    log::debug!("[Prefetch] Ignoring stale prefetch for track {} (session {} != {})",
+                        track_id, session, self.audio.playback_session);
+                    self.tasks.prefetch_rx = None;
+                    return;
+                }
+
                 log::info!("[Prefetch] Received CDN URL for track {}", track_id);
                 self.audio.prefetch_cdn_url = Some(cdn_url);
                 self.audio.prefetch_timestamp = Some(Instant::now());
@@ -1778,10 +1808,13 @@ impl MusicPlayerApp {
         if let Some(oauth) = &self.auth.oauth_manager {
             if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
                 log::info!("[Home] Fetching full track data for ID: {}", track_id);
-                
+
+                // Capture current session for validation in callback
+                let session = self.audio.playback_session;
+
                 let token = token_data.access_token.clone();
                 let (tx, rx) = channel();
-                
+
                 std::thread::spawn(move || {
                     let rt = match crate::utils::error_handling::create_runtime() {
                         Ok(r) => r,
@@ -1802,10 +1835,10 @@ impl MusicPlayerApp {
                                 // VALIDATE BEFORE RETURNING
                                 if !crate::utils::track_filter::is_track_playable(&track) {
                                     log::warn!("[Fetch] Track {} is not playable (geo-blocked or restricted)", track_id);
-                                    let _ = tx.send(Ok(vec![])); // Empty = auto-skip
+                                    let _ = tx.send((session, Ok(vec![]))); // Empty = auto-skip
                                 } else {
                                     log::info!("[Fetch] Fetched playable track: {}", track.title);
-                                    let _ = tx.send(Ok(vec![track]));
+                                    let _ = tx.send((session, Ok(vec![track])));
                                 }
                             }
                             Ok(Err(e)) => {
@@ -1813,20 +1846,20 @@ impl MusicPlayerApp {
                                 // Check if it's a "not playable" or "restricted" error - treat as warning, not fatal
                                 if err_msg.contains("not playable") || err_msg.contains("not available") || err_msg.contains("restricted") {
                                     log::warn!("[Fetch] Skipping unavailable track {}: {}", track_id, e);
-                                    let _ = tx.send(Ok(vec![])); // Return empty instead of error - triggers auto-skip
+                                    let _ = tx.send((session, Ok(vec![]))); // Return empty instead of error - triggers auto-skip
                                 } else {
                                     log::error!("[Fetch] Failed to fetch track {}: {}", track_id, e);
-                                    let _ = tx.send(Err(err_msg));
+                                    let _ = tx.send((session, Err(err_msg)));
                                 }
                             }
                             Err(_) => {
                                 log::error!("[Fetch] Timeout fetching track {} after 10 seconds", track_id);
-                                let _ = tx.send(Err("API timeout (10s exceeded)".to_string()));
+                                let _ = tx.send((session, Err("API timeout (10s exceeded)".to_string())));
                             }
                         }
                     });
                 });
-                
+
                 // Store receiver for checking in update loop
                 self.tasks.track_fetch_rx = Some(rx);
             }
@@ -1836,7 +1869,15 @@ impl MusicPlayerApp {
     /// Check for fetched track data and play when ready
     fn check_track_fetch(&mut self) {
         if let Some(rx) = &self.tasks.track_fetch_rx {
-            if let Ok(result) = rx.try_recv() {
+            if let Ok((session, result)) = rx.try_recv() {
+                // Guard: Only apply fetch if session matches
+                if session != self.audio.playback_session {
+                    log::debug!("[Fetch] Ignoring stale track fetch (session {} != {})",
+                        session, self.audio.playback_session);
+                    self.tasks.track_fetch_rx = None;
+                    return;
+                }
+
                 match result {
                     Ok(tracks) => {
                         if !tracks.is_empty() {
@@ -1866,10 +1907,13 @@ impl MusicPlayerApp {
         if let Some(oauth) = &self.auth.oauth_manager {
             if let Some(token_data) = crate::utils::token_helper::get_valid_token_sync(oauth) {
                 log::info!("[Home] Fetching {} tracks from API...", track_ids.len());
-                
+
+                // Capture current session for validation in callback
+                let session = self.audio.playback_session;
+
                 let token = token_data.access_token.clone();
                 let (tx, rx) = channel();
-                
+
                 std::thread::spawn(move || {
                     let rt = match crate::utils::error_handling::create_runtime() {
                         Ok(r) => r,
@@ -1887,13 +1931,13 @@ impl MusicPlayerApp {
                             }
                         }
                         if !tracks.is_empty() {
-                            let _ = tx.send(Ok(tracks));
+                            let _ = tx.send((session, Ok(tracks)));
                         } else {
-                            let _ = tx.send(Err("No playable tracks found".to_string()));
+                            let _ = tx.send((session, Err("No playable tracks found".to_string())));
                         }
                     });
                 });
-                
+
                 self.tasks.track_fetch_rx = Some(rx);
             }
         }

@@ -27,7 +27,7 @@ pub struct AudioState {
     pub mid_energy: Arc<AtomicU32>,
     pub high_energy: Arc<AtomicU32>,
 
-    // Playback Control (7 fields)
+    // Playback Control (8 fields)
     pub is_playing: bool,
     pub shuffle_mode: bool,
     pub repeat_mode: RepeatMode,
@@ -35,11 +35,12 @@ pub struct AudioState {
     pub muted: bool,
     pub volume_before_mute: f32,
     pub track_finished_handled: bool,  // Debounce flag to prevent repeated "track finished" triggers
+    pub playback_session: u64,  // Session counter to guard async callbacks from stale operations
 
     // Stream URL Prefetch (4 fields) - reduces auto-play latency and prevents network errors
-    pub prefetch_cdn_url: Option<String>,      // Pre-fetched CDN redirect URL
+    pub prefetch_cdn_url: Option<String>,       // Pre-fetched CDN redirect URL
     pub prefetch_timestamp: Option<Instant>,    // When the prefetch occurred
-    pub prefetched_for_track_id: Option<u64>,  // Track ID this prefetch is for
+    pub prefetched_for_track_id: Option<u64>,   // Track ID this prefetch is for
     pub prefetch_triggered: bool,               // Prevent duplicate prefetch attempts
 }
 
@@ -85,6 +86,7 @@ impl AudioState {
             muted: false,
             volume_before_mute: 1.0,
             track_finished_handled: false,
+            playback_session: 0,
             prefetch_cdn_url: None,
             prefetch_timestamp: None,
             prefetched_for_track_id: None,
@@ -142,4 +144,5 @@ impl AudioState {
             false
         }
     }
+
 }

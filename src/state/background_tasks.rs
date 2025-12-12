@@ -20,7 +20,7 @@ pub struct BackgroundTasks {
     // Home Screen Content
     pub home_recently_played_rx: Option<Receiver<Vec<Track>>>,
     pub home_recommendations_rx: Option<Receiver<Vec<Track>>>,
-    pub track_fetch_rx: Option<Receiver<Result<Vec<Track>, String>>>,
+    pub track_fetch_rx: Option<Receiver<(u64, Result<Vec<Track>, String>)>>,  // (session, result)
 
     // Suggestions Screen
     pub suggestions_rx: Option<Receiver<Vec<Track>>>,
@@ -38,8 +38,8 @@ pub struct BackgroundTasks {
     // Artwork
     pub artwork_rx: Option<Receiver<ColorImage>>,
 
-    // Stream URL Prefetch (track_id, cdn_url)
-    pub prefetch_rx: Option<Receiver<(u64, String)>>,
+    // Stream URL Prefetch (session, track_id, cdn_url)
+    pub prefetch_rx: Option<Receiver<(u64, u64, String)>>,
 }
 
 

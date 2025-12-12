@@ -54,7 +54,7 @@ fn is_retryable_status(status: reqwest::StatusCode) -> bool {
         500 | // Internal Server Error
         502 | // Bad Gateway
         503 | // Service Unavailable
-        504   // Gateway Timeout
+        504 // Gateway Timeout
     )
 }
 
@@ -69,38 +69,43 @@ where
 {
     const MAX_RETRIES: u32 = 3;
     const BASE_DELAY_MS: u64 = 500;
-    
+
     let mut last_error = None;
-    
+
     for attempt in 0..MAX_RETRIES {
         match f().await {
             Ok(result) => return Ok(result),
             Err(e) => {
                 // Check if error message indicates a retryable status
                 let error_str = e.to_string();
-                let should_retry = error_str.contains("504") 
+                let should_retry = error_str.contains("504")
                     || error_str.contains("503")
                     || error_str.contains("502")
                     || error_str.contains("500")
                     || error_str.contains("429")
                     || error_str.contains("timeout")
                     || error_str.contains("Timeout");
-                
+
                 if !should_retry || attempt == MAX_RETRIES - 1 {
                     return Err(e);
                 }
-                
+
                 // Exponential backoff
                 let delay_ms = BASE_DELAY_MS * 2_u64.pow(attempt);
-                log::warn!("[HTTP Retry] Attempt {}/{} failed: {}. Retrying in {}ms...", 
-                    attempt + 1, MAX_RETRIES, error_str, delay_ms);
-                
+                log::warn!(
+                    "[HTTP Retry] Attempt {}/{} failed: {}. Retrying in {}ms...",
+                    attempt + 1,
+                    MAX_RETRIES,
+                    error_str,
+                    delay_ms
+                );
+
                 tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                 last_error = Some(e);
             }
         }
     }
-    
+
     // This shouldn't be reachable, but just in case
     Err(last_error.unwrap())
 }
@@ -110,111 +115,144 @@ where
 pub async fn retry_get(url: &str) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
     const MAX_RETRIES: u32 = 3;
     const BASE_DELAY_MS: u64 = 500;
-    
+
     for attempt in 0..MAX_RETRIES {
         let response = client().get(url).send().await?;
         let status = response.status();
-        
+
         // Check if we should retry
         if is_retryable_status(status) && attempt < MAX_RETRIES - 1 {
             let delay_ms = BASE_DELAY_MS * 2_u64.pow(attempt);
-            log::warn!("[HTTP Retry] Status {} from {}. Retrying in {}ms... (attempt {}/{})",
-                status, url, delay_ms, attempt + 1, MAX_RETRIES);
+            log::warn!(
+                "[HTTP Retry] Status {} from {}. Retrying in {}ms... (attempt {}/{})",
+                status,
+                url,
+                delay_ms,
+                attempt + 1,
+                MAX_RETRIES
+            );
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             continue;
         }
-        
+
         // Return response (success or final failure)
         return Ok(response);
     }
-    
+
     // Shouldn't reach here
     Err("Max retries exceeded".into())
 }
 
 /// Retry a GET request with authorization header
-pub async fn retry_get_with_auth(url: &str, token: &str) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+pub async fn retry_get_with_auth(
+    url: &str,
+    token: &str,
+) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
     const MAX_RETRIES: u32 = 3;
     const BASE_DELAY_MS: u64 = 500;
-    
+
     for attempt in 0..MAX_RETRIES {
         let response = client()
             .get(url)
             .header("Authorization", format!("OAuth {}", token))
             .send()
             .await?;
-        
+
         let status = response.status();
-        
+
         // Check if we should retry
         if is_retryable_status(status) && attempt < MAX_RETRIES - 1 {
             let delay_ms = BASE_DELAY_MS * 2_u64.pow(attempt);
-            log::warn!("[HTTP Retry] Status {} from {}. Retrying in {}ms... (attempt {}/{})",
-                status, url, delay_ms, attempt + 1, MAX_RETRIES);
+            log::warn!(
+                "[HTTP Retry] Status {} from {}. Retrying in {}ms... (attempt {}/{})",
+                status,
+                url,
+                delay_ms,
+                attempt + 1,
+                MAX_RETRIES
+            );
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             continue;
         }
-        
+
         // Return response (success or final failure)
         return Ok(response);
     }
-    
+
     // Shouldn't reach here
     Err("Max retries exceeded".into())
 }
 
 /// Retry a POST request with authorization header
-pub async fn retry_post_with_auth(url: &str, token: &str) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+pub async fn retry_post_with_auth(
+    url: &str,
+    token: &str,
+) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
     const MAX_RETRIES: u32 = 3;
     const BASE_DELAY_MS: u64 = 500;
-    
+
     for attempt in 0..MAX_RETRIES {
         let response = client()
             .post(url)
             .header("Authorization", format!("OAuth {}", token))
             .send()
             .await?;
-        
+
         let status = response.status();
-        
+
         if is_retryable_status(status) && attempt < MAX_RETRIES - 1 {
             let delay_ms = BASE_DELAY_MS * 2_u64.pow(attempt);
-            log::warn!("[HTTP Retry] POST Status {} from {}. Retrying in {}ms... (attempt {}/{})",
-                status, url, delay_ms, attempt + 1, MAX_RETRIES);
+            log::warn!(
+                "[HTTP Retry] POST Status {} from {}. Retrying in {}ms... (attempt {}/{})",
+                status,
+                url,
+                delay_ms,
+                attempt + 1,
+                MAX_RETRIES
+            );
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             continue;
         }
-        
+
         return Ok(response);
     }
-    
+
     Err("Max retries exceeded".into())
 }
 
 /// Retry a DELETE request with authorization header
-pub async fn retry_delete_with_auth(url: &str, token: &str) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+pub async fn retry_delete_with_auth(
+    url: &str,
+    token: &str,
+) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
     const MAX_RETRIES: u32 = 3;
     const BASE_DELAY_MS: u64 = 500;
-    
+
     for attempt in 0..MAX_RETRIES {
         let response = client()
             .delete(url)
             .header("Authorization", format!("OAuth {}", token))
             .send()
             .await?;
-        
+
         let status = response.status();
-        
+
         if is_retryable_status(status) && attempt < MAX_RETRIES - 1 {
             let delay_ms = BASE_DELAY_MS * 2_u64.pow(attempt);
-            log::warn!("[HTTP Retry] DELETE Status {} from {}. Retrying in {}ms... (attempt {}/{})",
-                status, url, delay_ms, attempt + 1, MAX_RETRIES);
+            log::warn!(
+                "[HTTP Retry] DELETE Status {} from {}. Retrying in {}ms... (attempt {}/{})",
+                status,
+                url,
+                delay_ms,
+                attempt + 1,
+                MAX_RETRIES
+            );
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             continue;
         }
-        
+
         return Ok(response);
     }
-    
+
     Err("Max retries exceeded".into())
 }

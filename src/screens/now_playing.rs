@@ -1,6 +1,6 @@
-use eframe::egui;
 use crate::app::player_app::MusicPlayerApp;
-use crate::utils::{ShaderCallback, MultiPassCallback};
+use crate::utils::{MultiPassCallback, ShaderCallback};
+use eframe::egui;
 
 /// Now Playing screen - Shows current track with large artwork, shader background, and audio-reactive glow
 pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
@@ -9,13 +9,13 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
         render_error_state(ui, error_msg);
         return;
     }
-    
+
     // Show placeholder if no track is playing
     if app.audio.current_track_id.is_none() {
         render_empty_state(ui);
         return;
     }
-    
+
     // Get current track from queue
     let current_track_clone = app.audio.playback_queue.current_track().cloned();
 
@@ -79,44 +79,36 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
 fn render_error_state(ui: &mut egui::Ui, error_msg: &str) {
     ui.vertical_centered(|ui| {
         ui.add_space(100.0);
-        
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new("⚠️")
-                    .size(64.0)
-                    .color(egui::Color32::from_rgb(255, 100, 100))
-            )
-        );
-        
+
+        ui.add(egui::Label::new(
+            egui::RichText::new("⚠️")
+                .size(64.0)
+                .color(egui::Color32::from_rgb(255, 100, 100)),
+        ));
+
         ui.add_space(20.0);
-        
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new("Playback Error")
-                    .size(24.0)
-                    .color(egui::Color32::from_rgb(255, 100, 100))
-            )
-        );
-        
+
+        ui.add(egui::Label::new(
+            egui::RichText::new("Playback Error")
+                .size(24.0)
+                .color(egui::Color32::from_rgb(255, 100, 100)),
+        ));
+
         ui.add_space(15.0);
-        
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new(error_msg)
-                    .size(16.0)
-                    .color(egui::Color32::from_rgb(180, 180, 180))
-            )
-        );
-        
+
+        ui.add(egui::Label::new(
+            egui::RichText::new(error_msg)
+                .size(16.0)
+                .color(egui::Color32::from_rgb(180, 180, 180)),
+        ));
+
         ui.add_space(20.0);
-        
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new("Try selecting another track")
-                    .size(14.0)
-                    .color(egui::Color32::from_rgb(120, 120, 120))
-            )
-        );
+
+        ui.add(egui::Label::new(
+            egui::RichText::new("Try selecting another track")
+                .size(14.0)
+                .color(egui::Color32::from_rgb(120, 120, 120)),
+        ));
     });
 }
 
@@ -124,34 +116,28 @@ fn render_error_state(ui: &mut egui::Ui, error_msg: &str) {
 fn render_empty_state(ui: &mut egui::Ui) {
     ui.vertical_centered(|ui| {
         ui.add_space(150.0);
-        
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new("🎵")
-                    .size(64.0)
-                    .color(egui::Color32::from_rgb(120, 120, 120))
-            )
-        );
-        
+
+        ui.add(egui::Label::new(
+            egui::RichText::new("🎵")
+                .size(64.0)
+                .color(egui::Color32::from_rgb(120, 120, 120)),
+        ));
+
         ui.add_space(20.0);
-        
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new("No track playing")
-                    .size(24.0)
-                    .color(egui::Color32::from_rgb(150, 150, 150))
-            )
-        );
-        
+
+        ui.add(egui::Label::new(
+            egui::RichText::new("No track playing")
+                .size(24.0)
+                .color(egui::Color32::from_rgb(150, 150, 150)),
+        ));
+
         ui.add_space(10.0);
-        
-        ui.add(
-            egui::Label::new(
-                egui::RichText::new("Search for a track or playlist to get started")
-                    .size(16.0)
-                    .color(egui::Color32::from_rgb(120, 120, 120))
-            )
-        );
+
+        ui.add(egui::Label::new(
+            egui::RichText::new("Search for a track or playlist to get started")
+                .size(16.0)
+                .color(egui::Color32::from_rgb(120, 120, 120)),
+        ));
     });
 }
 
@@ -159,13 +145,13 @@ fn render_empty_state(ui: &mut egui::Ui) {
 fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::models::Track) {
     ui.vertical_centered(|ui| {
         ui.add_space(60.0);
-        
+
         // Track title with outline effect (optimized for CPU mode)
         let title_font = egui::FontId::proportional(28.0);
         let available_width = ui.available_width();
         let title_center_x = ui.cursor().min.x + available_width / 2.0;
         let title_y = ui.cursor().min.y;
-        
+
         // CPU mode: simple shadow (2 draws) vs GPU mode: full stroke (48+ draws)
         if app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Cpu {
             // Simple drop shadow for readability (much cheaper)
@@ -194,14 +180,19 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
             }
         }
         // Actual white text on top
-        ui.label(egui::RichText::new(&app.audio.current_title).size(28.0).strong().color(egui::Color32::WHITE));
+        ui.label(
+            egui::RichText::new(&app.audio.current_title)
+                .size(28.0)
+                .strong()
+                .color(egui::Color32::WHITE),
+        );
         ui.add_space(10.0);
-        
+
         // Artist name with outline (optimized for CPU mode)
         let artist_font = egui::FontId::proportional(20.0);
         let artist_center_x = ui.cursor().min.x + available_width / 2.0;
         let artist_y = ui.cursor().min.y;
-        
+
         // CPU mode: simple shadow vs GPU mode: full stroke
         if app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Cpu {
             // Simple drop shadow
@@ -229,24 +220,32 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
                 }
             }
         }
-        ui.label(egui::RichText::new(&track.user.username).size(20.0).color(egui::Color32::from_rgb(255, 85, 0)));
-        
+        ui.label(
+            egui::RichText::new(&track.user.username)
+                .size(20.0)
+                .color(egui::Color32::from_rgb(255, 85, 0)),
+        );
+
         ui.add_space(100.0);
-        
+
         let artwork_size = 400.0;
-        
+
         // Use real artwork if loaded, otherwise placeholder
-        let texture_to_use = if app.ui.artwork_texture.is_some() && app.audio.current_track_id == Some(track.id) {
-            &app.ui.artwork_texture
-        } else {
-            &app.ui.no_artwork_texture
-        };
-        
+        let texture_to_use =
+            if app.ui.artwork_texture.is_some() && app.audio.current_track_id == Some(track.id) {
+                &app.ui.artwork_texture
+            } else {
+                &app.ui.no_artwork_texture
+            };
+
         if let Some(texture) = texture_to_use {
-            let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(artwork_size, artwork_size), egui::Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(
+                egui::Vec2::new(artwork_size, artwork_size),
+                egui::Sense::hover(),
+            );
 
             // Draw audio-reactive glow if real artwork (GPU mode only - expensive)
-            if app.ui.artwork_texture.is_some() 
+            if app.ui.artwork_texture.is_some()
                 && app.audio.current_track_id == Some(track.id)
                 && app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu
             {
@@ -262,12 +261,12 @@ fn render_track_details(app: &MusicPlayerApp, ui: &mut egui::Ui, track: &crate::
             );
         } else {
             // Fallback: Gray box
-            let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(artwork_size, artwork_size), egui::Sense::hover());
-            ui.painter().rect_filled(
-                rect,
-                20.0,
-                egui::Color32::from_rgb(60, 60, 65),
+            let (rect, _) = ui.allocate_exact_size(
+                egui::Vec2::new(artwork_size, artwork_size),
+                egui::Sense::hover(),
             );
+            ui.painter()
+                .rect_filled(rect, 20.0, egui::Color32::from_rgb(60, 60, 65));
         }
     });
 }
@@ -311,69 +310,101 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         }
     } else {
         // CPU mode: solid dark background
-        ui.painter().rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 20, 25));
+        ui.painter()
+            .rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 20, 25));
     }
-    
+
     // No overlay - use text outlines for readability
     ui.vertical_centered(|ui| {
         ui.add_space(60.0);
-        
-        // Track title with strong outline
+
+        // Track title with strong outline (GPU) or cheap shadow (CPU)
         let title_font = egui::FontId::proportional(28.0);
         let available_width = ui.available_width();
         let title_center_x = ui.cursor().min.x + available_width / 2.0;
         let title_y = ui.cursor().min.y;
-        
-        for distance in [4.0, 3.0, 2.0] {
-            for angle in 0..16 {
-                let rad = (angle as f32) * std::f32::consts::PI / 8.0;
-                let offset_x = rad.cos() * distance;
-                let offset_y = rad.sin() * distance;
-                ui.painter().text(
-                    egui::pos2(title_center_x + offset_x, title_y + offset_y),
-                    egui::Align2::CENTER_TOP,
-                    &app.audio.current_title,
-                    title_font.clone(),
-                    egui::Color32::BLACK,
-                );
+        if app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Cpu {
+            // Cheap drop shadow in CPU mode
+            ui.painter().text(
+                egui::pos2(title_center_x + 2.0, title_y + 2.0),
+                egui::Align2::CENTER_TOP,
+                &app.audio.current_title,
+                title_font.clone(),
+                egui::Color32::BLACK,
+            );
+        } else {
+            for distance in [4.0, 3.0, 2.0] {
+                for angle in 0..16 {
+                    let rad = (angle as f32) * std::f32::consts::PI / 8.0;
+                    let offset_x = rad.cos() * distance;
+                    let offset_y = rad.sin() * distance;
+                    ui.painter().text(
+                        egui::pos2(title_center_x + offset_x, title_y + offset_y),
+                        egui::Align2::CENTER_TOP,
+                        &app.audio.current_title,
+                        title_font.clone(),
+                        egui::Color32::BLACK,
+                    );
+                }
             }
         }
-        ui.label(egui::RichText::new(&app.audio.current_title).size(28.0).strong().color(egui::Color32::WHITE));
+        ui.label(
+            egui::RichText::new(&app.audio.current_title)
+                .size(28.0)
+                .strong()
+                .color(egui::Color32::WHITE),
+        );
         ui.add_space(10.0);
-        
-        // Artist name with outline
+
+        // Artist name with outline (GPU) or cheap shadow (CPU)
         let artist_font = egui::FontId::proportional(20.0);
         let artist_center_x = ui.cursor().min.x + available_width / 2.0;
         let artist_y = ui.cursor().min.y;
-        
-        for distance in [3.0, 2.0] {
-            for angle in 0..16 {
-                let rad = (angle as f32) * std::f32::consts::PI / 8.0;
-                let offset_x = rad.cos() * distance;
-                let offset_y = rad.sin() * distance;
-                ui.painter().text(
-                    egui::pos2(artist_center_x + offset_x, artist_y + offset_y),
-                    egui::Align2::CENTER_TOP,
-                    &app.audio.current_artist,
-                    artist_font.clone(),
-                    egui::Color32::BLACK,
-                );
+        if app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Cpu {
+            ui.painter().text(
+                egui::pos2(artist_center_x + 2.0, artist_y + 2.0),
+                egui::Align2::CENTER_TOP,
+                &app.audio.current_artist,
+                artist_font.clone(),
+                egui::Color32::BLACK,
+            );
+        } else {
+            for distance in [3.0, 2.0] {
+                for angle in 0..16 {
+                    let rad = (angle as f32) * std::f32::consts::PI / 8.0;
+                    let offset_x = rad.cos() * distance;
+                    let offset_y = rad.sin() * distance;
+                    ui.painter().text(
+                        egui::pos2(artist_center_x + offset_x, artist_y + offset_y),
+                        egui::Align2::CENTER_TOP,
+                        &app.audio.current_artist,
+                        artist_font.clone(),
+                        egui::Color32::BLACK,
+                    );
+                }
             }
         }
-        ui.label(egui::RichText::new(&app.audio.current_artist).size(20.0).color(egui::Color32::from_rgb(255, 85, 0)));
-        
+        ui.label(
+            egui::RichText::new(&app.audio.current_artist)
+                .size(20.0)
+                .color(egui::Color32::from_rgb(255, 85, 0)),
+        );
+
         ui.add_space(50.0);
-        
+
         let artwork_size = 400.0;
-        
+
         let texture_to_use = if app.ui.artwork_texture.is_some() {
             &app.ui.artwork_texture
         } else {
             &app.ui.no_artwork_texture
         };
-        
+
         if let Some(texture) = texture_to_use {
-            let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(artwork_size, artwork_size), egui::Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(
+                egui::Vec2::new(artwork_size, artwork_size),
+                egui::Sense::hover(),
+            );
 
             // Draw audio-reactive glow (GPU mode only)
             if app.ui.artwork_texture.is_some()
@@ -390,12 +421,12 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 egui::Color32::WHITE,
             );
         } else {
-            let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(artwork_size, artwork_size), egui::Sense::hover());
-            ui.painter().rect_filled(
-                rect,
-                20.0,
-                egui::Color32::from_rgb(60, 60, 65),
+            let (rect, _) = ui.allocate_exact_size(
+                egui::Vec2::new(artwork_size, artwork_size),
+                egui::Sense::hover(),
             );
+            ui.painter()
+                .rect_filled(rect, 20.0, egui::Color32::from_rgb(60, 60, 65));
         }
     });
 }
@@ -403,17 +434,17 @@ fn render_fallback_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
 /// Render INTENSE audio-reactive glow around artwork (FIRE & THUNDER EDITION)
 fn render_artwork_glow(ui: &mut egui::Ui, rect: egui::Rect, app: &MusicPlayerApp) {
     let [r, g, b, _] = app.ui.artwork_dominant_color.to_array();
-    
+
     // Subtle audio reactive boost near edges (1.0-1.4x)
     let audio_boost = 1.0 + (app.ui.audio_amplitude * 0.4);
-    
+
     // 4 glow layers for subtle edge glow (reduced from 8)
     for i in 0..6 {
         let layer_idx = i as f32;
-        let expansion = (layer_idx + 1.0) * 2.1 * audio_boost;  // 5.0 -> 2.0 (subtle near edges)
-        let base_alpha = (150.0 - (layer_idx * 25.0)).max(0.0) as u8;  // Softer falloff
+        let expansion = (layer_idx + 1.0) * 2.1 * audio_boost; // 5.0 -> 2.0 (subtle near edges)
+        let base_alpha = (150.0 - (layer_idx * 25.0)).max(0.0) as u8; // Softer falloff
         let alpha = ((base_alpha as f32) * audio_boost.min(1.5)) as u8;
-        
+
         let glow_rect = rect.expand(expansion);
         ui.painter().rect_filled(
             glow_rect,
@@ -422,5 +453,3 @@ fn render_artwork_glow(ui: &mut egui::Ui, rect: egui::Rect, app: &MusicPlayerApp
         );
     }
 }
-
-

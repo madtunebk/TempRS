@@ -1,13 +1,15 @@
+use crate::app::player_app::MusicPlayerApp;
+use crate::ui_components::helpers::{
+    calculate_grid_layout, render_section_header, render_track_card,
+};
 /// Recently Played section component for Home screen
 use eframe::egui;
-use crate::app::player_app::MusicPlayerApp;
-use crate::ui_components::helpers::{render_section_header, render_track_card, calculate_grid_layout};
 
 /// Action to take when interacting with track grid
 #[derive(Debug, Clone, Copy)]
 pub enum TrackAction {
-    PlaySingle(u64),      // Play single track by ID
-    PlayAsPlaylist,       // Load all as playlist
+    PlaySingle(u64), // Play single track by ID
+    PlayAsPlaylist,  // Load all as playlist
 }
 
 /// Render "Recently Played" section with up to 6 tracks
@@ -17,7 +19,7 @@ pub fn render_recently_played_section(
     ui: &mut egui::Ui,
 ) -> Option<TrackAction> {
     let recently_played = app.content.home_content.recently_played.clone();
-    
+
     // Always show section header
     if !recently_played.is_empty() {
         if render_section_header(ui, "🕒 Recently Played", Some("View all")) {
@@ -28,7 +30,7 @@ pub fn render_recently_played_section(
         render_section_header(ui, "🕒 Recently Played", None);
     }
     ui.add_space(15.0);
-    
+
     // Show empty state if no tracks
     if recently_played.is_empty() {
         crate::ui_components::helpers::render_empty_state(
@@ -40,15 +42,15 @@ pub fn render_recently_played_section(
         ui.add_space(40.0);
         return None;
     }
-    
+
     // Limit to 6 items (1 row)
     let limited_tracks: Vec<_> = recently_played.iter().take(6).cloned().collect();
-    
+
     // Render grid and get action
     let action = render_tracks_grid(app, ui, &limited_tracks);
-    
+
     ui.add_space(40.0);
-    
+
     action
 }
 
@@ -61,14 +63,15 @@ fn render_tracks_grid(
     let (items_per_row, padding) = calculate_grid_layout(ui.available_width(), 220.0, 15.0);
 
     let mut action = None;
-    
+
     for chunk in tracks.chunks(items_per_row) {
         ui.horizontal(|ui| {
             ui.add_space(padding);
-            
+
             // Render real tracks
             for track in chunk {
-                let (clicked, shift_clicked, _right_clicked) = render_track_card(app, ui, track, 220.0);
+                let (clicked, shift_clicked, _right_clicked) =
+                    render_track_card(app, ui, track, 220.0);
                 if clicked {
                     action = Some(TrackAction::PlaySingle(track.id));
                 } else if shift_clicked {
@@ -76,7 +79,7 @@ fn render_tracks_grid(
                 }
                 ui.add_space(15.0);
             }
-            
+
             // Fill remaining slots in this row with grey placeholders
             let remaining_slots = items_per_row - chunk.len();
             for _ in 0..remaining_slots {
@@ -86,6 +89,6 @@ fn render_tracks_grid(
         });
         ui.add_space(12.0);
     }
-    
+
     action
 }

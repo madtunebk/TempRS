@@ -3,6 +3,7 @@ use std::fmt;
 
 /// Error type for shader compilation and pipeline errors
 #[derive(Debug, Clone)]
+#[allow(clippy::enum_variant_names)]
 pub enum ShaderError {
     CompilationError(String),
     ValidationError(String),
@@ -72,7 +73,7 @@ pub fn format_shader_error(error: &ShaderError) -> String {
         ShaderError::DeviceError(msg) => msg,
         ShaderError::UnknownError(msg) => msg,
     };
-    
+
     // Clean up the error message by removing excessive whitespace and formatting nicely
     let cleaned = msg
         .lines()
@@ -80,7 +81,7 @@ pub fn format_shader_error(error: &ShaderError) -> String {
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n");
-    
+
     // Add type prefix
     let prefix = match error {
         ShaderError::CompilationError(_) => "Compilation Error",
@@ -88,7 +89,7 @@ pub fn format_shader_error(error: &ShaderError) -> String {
         ShaderError::DeviceError(_) => "Device Error",
         ShaderError::UnknownError(_) => "Shader Error",
     };
-    
+
     format!("{}\n\n{}", prefix, cleaned)
 }
 

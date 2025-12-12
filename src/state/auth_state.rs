@@ -50,7 +50,9 @@ impl AuthState {
         if let Some(oauth) = &self.oauth_manager {
             if let Some(token_data) = oauth.get_token() {
                 // Check if token is expired
-                if let Ok(duration) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                if let Ok(duration) =
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                {
                     let current_time = duration.as_secs();
                     return current_time < token_data.expires_at;
                 }
@@ -65,7 +67,9 @@ impl AuthState {
         if let Some(oauth) = &self.oauth_manager {
             if let Some(token_data) = oauth.get_token() {
                 // Check if token is expired
-                if let Ok(duration) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                if let Ok(duration) =
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                {
                     let current_time = duration.as_secs();
                     if current_time < token_data.expires_at {
                         return Some(token_data.access_token.clone());

@@ -1,7 +1,6 @@
 /// Social service for managing likes/unlikes of tracks and playlists
 ///
 /// Consolidates duplicate logic from MusicPlayerApp::toggle_like() and toggle_playlist_like()
-
 use std::collections::HashSet;
 
 /// Target for like/unlike operations
@@ -92,21 +91,26 @@ fn spawn_like_task(target: LikeTarget, token: String) {
     crate::utils::async_helper::spawn_fire_and_forget(move || {
         Box::pin(async move {
             let result = match target {
-                LikeTarget::Track(id) => {
-                    crate::api::likes::like_track(&token, id).await
-                }
-                LikeTarget::Playlist(id) => {
-                    crate::api::likes::like_playlist(&token, id).await
-                }
+                LikeTarget::Track(id) => crate::api::likes::like_track(&token, id).await,
+                LikeTarget::Playlist(id) => crate::api::likes::like_playlist(&token, id).await,
             };
 
             match result {
                 Ok(_) => {
-                    log::info!("[Like] Successfully liked {} {}", target.kind(), target.id());
+                    log::info!(
+                        "[Like] Successfully liked {} {}",
+                        target.kind(),
+                        target.id()
+                    );
                     Ok(())
                 }
                 Err(e) => {
-                    log::error!("[Like] Failed to like {} {}: {}", target.kind(), target.id(), e);
+                    log::error!(
+                        "[Like] Failed to like {} {}: {}",
+                        target.kind(),
+                        target.id(),
+                        e
+                    );
                     Err(e)
                 }
             }
@@ -119,21 +123,26 @@ fn spawn_unlike_task(target: LikeTarget, token: String) {
     crate::utils::async_helper::spawn_fire_and_forget(move || {
         Box::pin(async move {
             let result = match target {
-                LikeTarget::Track(id) => {
-                    crate::api::likes::unlike_track(&token, id).await
-                }
-                LikeTarget::Playlist(id) => {
-                    crate::api::likes::unlike_playlist(&token, id).await
-                }
+                LikeTarget::Track(id) => crate::api::likes::unlike_track(&token, id).await,
+                LikeTarget::Playlist(id) => crate::api::likes::unlike_playlist(&token, id).await,
             };
 
             match result {
                 Ok(_) => {
-                    log::info!("[Like] Successfully unliked {} {}", target.kind(), target.id());
+                    log::info!(
+                        "[Like] Successfully unliked {} {}",
+                        target.kind(),
+                        target.id()
+                    );
                     Ok(())
                 }
                 Err(e) => {
-                    log::error!("[Like] Failed to unlike {} {}: {}", target.kind(), target.id(), e);
+                    log::error!(
+                        "[Like] Failed to unlike {} {}: {}",
+                        target.kind(),
+                        target.id(),
+                        e
+                    );
                     Err(e)
                 }
             }

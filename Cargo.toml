@@ -71,17 +71,17 @@ test-bins = []
 [build-dependencies]
 dotenvy = "0.15"
 
-[profile.release]
-opt-level = 3        # Maximum optimization
-lto = "fat"          # Full LTO (better than just 'true')
-codegen-units = 1    # Better optimization, slower compile
-strip = true         # Strip symbols from binary (smaller size)
-panic = "abort"      # Smaller binary, faster panics
-debug = false        # No debug info
+#[profile.release]
+#opt-level = 3        # Maximum optimization
+#lto = "fat"          # Full LTO (better than just 'true')
+#codegen-units = 1    # Better optimization, slower compile
+#strip = true         # Strip symbols from binary (smaller size)
+#panic = "abort"      # Smaller binary, faster panics
+#debug = false        # No debug info
 
 # Ultra-optimized for headless servers (smallest binary, best performance)
-[profile.release-small]
-inherits = "release"
-opt-level = "z"      # Optimize for size (often faster on servers due to cache)
-lto = "fat"
-strip = true
+#[profile.release-small]
+#inherits = "release"
+#opt-level = "z"      # Optimize for size (often faster on servers due to cache)
+#lto = "fat"
+#strip = true

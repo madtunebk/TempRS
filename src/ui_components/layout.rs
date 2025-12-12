@@ -1,6 +1,6 @@
-use eframe::egui;
-use crate::app::player_app::{MusicPlayerApp, MainTab};
+use crate::app::player_app::{MainTab, MusicPlayerApp};
 use crate::ui_components::{header::render_header, player::render_player};
+use eframe::egui;
 
 /// Main entry point for rendering the app UI - routes to appropriate screen
 /// NOTE: Parent layout wrapper for all screens - called from player_app.rs
@@ -32,20 +32,24 @@ pub fn render_with_layout(app: &mut MusicPlayerApp, ctx: &egui::Context) {
             // Refresh playlists data on keyboard shortcut
             app.fetch_playlists();
         }
-        if i.modifiers.ctrl && i.key_pressed(egui::Key::R) && (!app.content.search_results_tracks.is_empty() || !app.content.search_results_playlists.is_empty()) {
+        if i.modifiers.ctrl
+            && i.key_pressed(egui::Key::R)
+            && (!app.content.search_results_tracks.is_empty()
+                || !app.content.search_results_playlists.is_empty())
+        {
             app.ui.selected_tab = MainTab::Search;
         }
     });
-    
+
     // Load no_artwork texture if not already loaded
     if app.ui.no_artwork_texture.is_none() {
         load_no_artwork_texture(app, ctx);
     }
-    
+
     // Show sidebar only when multiple tracks (playlist) are loaded AND on Now Playing tab
-    let show_sidebar = app.audio.playback_queue.current_queue.len() > 1 
+    let show_sidebar = app.audio.playback_queue.current_queue.len() > 1
         && app.ui.selected_tab == MainTab::NowPlaying;
-    
+
     match app.ui.selected_tab {
         MainTab::Home => {
             render_layout_with_content(app, ctx, false, |app, ui, _ctx| {
@@ -110,21 +114,18 @@ fn render_layout_with_content<F>(
     if app.audio.current_track_id.is_some() {
         let screen_rect = ctx.content_rect();
         let footer_height = 53.0;
-        
+
         egui::Area::new(egui::Id::new("player_overlay"))
             .fixed_pos(egui::pos2(0.0, screen_rect.max.y - footer_height))
             .show(ctx, |ui| {
                 ui.set_width(screen_rect.width());
                 ui.set_height(footer_height);
-                
+
                 // Background
                 let rect = ui.available_rect_before_wrap();
-                ui.painter().rect_filled(
-                    rect,
-                    0.0,
-                    egui::Color32::from_rgb(25, 25, 25),
-                );
-                
+                ui.painter()
+                    .rect_filled(rect, 0.0, egui::Color32::from_rgb(25, 25, 25));
+
                 // Use full width for footer controls
                 ui.add_space(6.0);
                 render_player(app, ui);
@@ -138,15 +139,29 @@ fn render_layout_with_content<F>(
             egui::SidePanel::left("sidebar")
                 .exact_width(400.0)
                 .resizable(false)
-                .frame(egui::Frame::NONE
-                    .fill(egui::Color32::from_rgb(15, 15, 15))
-                    .inner_margin(egui::Margin::symmetric(10, 10))
+                .frame(
+                    egui::Frame::NONE
+                        .fill(egui::Color32::from_rgb(15, 15, 15))
+                        .inner_margin(egui::Margin::symmetric(10, 10)),
                 )
                 .show(ctx, |ui| {
-                    if let Some(clicked_queue_idx) = crate::ui_components::playlist_sidebar::render_playlist_tracks(app, ui, ctx) {
+                    if let Some(clicked_queue_idx) =
+                        crate::ui_components::playlist_sidebar::render_playlist_tracks(app, ui, ctx)
+                    {
                         // clicked_queue_idx is now a position in the queue, get the actual track
-                        if let Some(&original_idx) = app.audio.playback_queue.current_queue.get(clicked_queue_idx) {
-                            if let Some(track_id) = app.audio.playback_queue.original_tracks.get(original_idx).map(|t| t.id) {
+                        if let Some(&original_idx) = app
+                            .audio
+                            .playback_queue
+                            .current_queue
+                            .get(clicked_queue_idx)
+                        {
+                            if let Some(track_id) = app
+                                .audio
+                                .playback_queue
+                                .original_tracks
+                                .get(original_idx)
+                                .map(|t| t.id)
+                            {
                                 app.play_track(track_id);
                             }
                         }
@@ -157,14 +172,18 @@ fn render_layout_with_content<F>(
             egui::SidePanel::left("sidebar_collapsed")
                 .exact_width(50.0)
                 .resizable(false)
-                .frame(egui::Frame::NONE
-                    .fill(egui::Color32::from_rgb(15, 15, 15))
-                )
+                .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(15, 15, 15)))
                 .show(ctx, |ui| {
                     ui.add_space(10.0);
                     ui.vertical_centered(|ui| {
                         // Expand button
-                        if ui.add_sized([40.0, 40.0], egui::Button::new("▶").fill(egui::Color32::from_rgb(45, 45, 50))).clicked() {
+                        if ui
+                            .add_sized(
+                                [40.0, 40.0],
+                                egui::Button::new("▶").fill(egui::Color32::from_rgb(45, 45, 50)),
+                            )
+                            .clicked()
+                        {
                             app.ui.queue_collapsed = false;
                         }
                     });
@@ -174,13 +193,15 @@ fn render_layout_with_content<F>(
 
     // Central Panel (Content)
     egui::CentralPanel::default()
-        .frame(egui::Frame::NONE
-            .fill(egui::Color32::BLACK)
-        )
+        .frame(egui::Frame::NONE.fill(egui::Color32::BLACK))
         .show(ctx, |ui| {
             // Add bottom padding if footer is visible (53px footer + 20px extra space)
-            let bottom_padding = if app.audio.current_track_id.is_some() { 73.0 } else { 0.0 };
-            
+            let bottom_padding = if app.audio.current_track_id.is_some() {
+                73.0
+            } else {
+                0.0
+            };
+
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -199,7 +220,8 @@ fn load_no_artwork_texture(app: &mut MusicPlayerApp, ctx: &egui::Context) {
         let rgba = image.to_rgba8();
         let size = [rgba.width() as usize, rgba.height() as usize];
         let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-        app.ui.no_artwork_texture = Some(ctx.load_texture("no_artwork", color_image, egui::TextureOptions::LINEAR));
+        app.ui.no_artwork_texture =
+            Some(ctx.load_texture("no_artwork", color_image, egui::TextureOptions::LINEAR));
         log::info!("[Layout] Loaded no_artwork.png texture");
     } else {
         log::error!("[Layout] Failed to load no_artwork.png");

@@ -1,6 +1,6 @@
+use crate::api::fetch_related_tracks;
 /// Home screen data management - handles fetching and caching of personalized content
 use crate::models::{Track, User};
-use crate::api::fetch_related_tracks;
 use crate::utils::playback_history::PlaybackHistoryDB;
 use std::sync::mpsc::Sender;
 
@@ -52,7 +52,10 @@ pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
             match PlaybackHistoryDB::new() {
                 Ok(db) => {
                     let records = db.get_recent_tracks(6);
-                    log::info!("[Home] Loaded {} tracks from database (ordered by played_at DESC)", records.len());
+                    log::info!(
+                        "[Home] Loaded {} tracks from database (ordered by played_at DESC)",
+                        records.len()
+                    );
 
                     // Convert PlaybackRecord to Track
                     for record in records {
@@ -67,10 +70,10 @@ pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
                             artwork_url: None, // Will be fetched from API when needed
                             permalink_url: None,
                             duration: record.duration,
-                            full_duration: None,  // Not stored in history DB
+                            full_duration: None, // Not stored in history DB
                             genre: record.genre,
                             streamable: Some(true), // Assumed from history, but will be validated
-                            stream_url: None, // Will be fetched fresh from API when needed
+                            stream_url: None,       // Will be fetched fresh from API when needed
                             playback_count: None,
                             access: None,
                             policy: None,
@@ -86,7 +89,10 @@ pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
                 }
             }
 
-            log::info!("[Home] Sending {} recently played tracks (ordered by played_at DESC)", recent_tracks.len());
+            log::info!(
+                "[Home] Sending {} recently played tracks (ordered by played_at DESC)",
+                recent_tracks.len()
+            );
             let _ = tx.send(recent_tracks);
             Ok(())
         })
@@ -97,7 +103,12 @@ pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
 /// Uses the most recently played track to find related tracks
 /// Fallback: If history empty or API fails, fetch popular/trending tracks
 /// Always returns exactly 6 tracks
-pub fn fetch_recommendations_async(token: String, recently_played: Vec<Track>, tx: Sender<Vec<Track>>, limit: usize) {
+pub fn fetch_recommendations_async(
+    token: String,
+    recently_played: Vec<Track>,
+    tx: Sender<Vec<Track>>,
+    limit: usize,
+) {
     crate::utils::async_helper::spawn_fire_and_forget(move || {
         Box::pin(async move {
             let mut recommendations: Vec<Track> = Vec::new();
@@ -105,7 +116,12 @@ pub fn fetch_recommendations_async(token: String, recently_played: Vec<Track>, t
             // Try to use recently played track first
             if let Some(track) = recently_played.first() {
                 let track_urn = format!("soundcloud:tracks:{}", track.id);
-                log::info!("[Home] Finding {} related tracks for most recent: {} ({})", limit, track.title, track_urn);
+                log::info!(
+                    "[Home] Finding {} related tracks for most recent: {} ({})",
+                    limit,
+                    track.title,
+                    track_urn
+                );
 
                 // Get related tracks
                 match fetch_related_tracks(&token, &track_urn, limit).await {
@@ -114,7 +130,9 @@ pub fn fetch_recommendations_async(token: String, recently_played: Vec<Track>, t
                             log::info!("[Home] Fetched {} related tracks", tracks.len());
                             recommendations.extend(tracks);
                         } else {
-                            log::warn!("[Home] Related tracks returned empty, falling back to search");
+                            log::warn!(
+                                "[Home] Related tracks returned empty, falling back to search"
+                            );
                         }
                     }
                     Err(e) => {
@@ -128,7 +146,10 @@ pub fn fetch_recommendations_async(token: String, recently_played: Vec<Track>, t
             // Final deduplication pass (in case related tracks had duplicates)
             recommendations = crate::utils::track_filter::remove_duplicates(recommendations);
 
-            log::info!("[Home] Sending {} recommendations total", recommendations.len());
+            log::info!(
+                "[Home] Sending {} recommendations total",
+                recommendations.len()
+            );
             let _ = tx.send(recommendations);
             Ok(())
         })

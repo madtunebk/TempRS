@@ -1,5 +1,5 @@
 // Track API endpoints
-use crate::models::{Track, TracksResponse, SearchTracksResponse};
+use crate::models::{SearchTracksResponse, Track, TracksResponse};
 
 /// Fetch a single track by ID from the API
 pub async fn fetch_track_by_id(
@@ -25,12 +25,12 @@ pub async fn fetch_track_by_id(
     }
 
     let track: Track = response.json().await?;
-    
+
     // Validate track is playable
     if !crate::utils::track_filter::is_track_playable(&track) {
         return Err(format!("Track '{}' is not playable", track.title).into());
     }
-    
+
     Ok(track)
 }
 
@@ -42,11 +42,13 @@ pub async fn fetch_related_tracks(
 ) -> Result<Vec<Track>, Box<dyn std::error::Error>> {
     // Extract numeric ID from URN if needed (soundcloud:tracks:123 -> 123)
     let track_id = if track_urn.starts_with("soundcloud:tracks:") {
-        track_urn.strip_prefix("soundcloud:tracks:").unwrap_or(track_urn)
+        track_urn
+            .strip_prefix("soundcloud:tracks:")
+            .unwrap_or(track_urn)
     } else {
         track_urn
     };
-    
+
     let url = format!(
         "https://api.soundcloud.com/tracks/{}/related?access=playable&limit={}&offset=0&linked_partitioning=true",
         track_id,
@@ -65,10 +67,11 @@ pub async fn fetch_related_tracks(
     }
 
     let tracks_response: TracksResponse = response.json().await?;
-    
+
     // Filter and deduplicate (removes non-playable and duplicate tracks)
-    let filtered_tracks = crate::utils::track_filter::filter_and_deduplicate(tracks_response.collection);
-    
+    let filtered_tracks =
+        crate::utils::track_filter::filter_and_deduplicate(tracks_response.collection);
+
     log::info!("[Related] Fetched {} related tracks", filtered_tracks.len());
     Ok(filtered_tracks)
 }
@@ -119,13 +122,14 @@ pub async fn load_next_search_page_smart(
 
 /// Fetch multiple tracks by IDs in parallel (max 10 concurrent)
 /// Useful for batch loading history DB tracks or playlists
-pub async fn fetch_tracks_batch(
-    token: &str,
-    track_ids: Vec<u64>,
-) -> Vec<Track> {
+#[allow(dead_code)]
+pub async fn fetch_tracks_batch(token: &str, track_ids: Vec<u64>) -> Vec<Track> {
     use futures_util::stream::{self, StreamExt};
 
-    log::info!("[BatchFetch] Fetching {} tracks in parallel (max 10 concurrent)", track_ids.len());
+    log::info!(
+        "[BatchFetch] Fetching {} tracks in parallel (max 10 concurrent)",
+        track_ids.len()
+    );
 
     let results = stream::iter(track_ids)
         .map(|track_id| {
@@ -140,11 +144,15 @@ pub async fn fetch_tracks_batch(
                 }
             }
         })
-        .buffer_unordered(10)  // Max 10 concurrent requests
+        .buffer_unordered(10) // Max 10 concurrent requests
         .collect::<Vec<_>>()
         .await;
 
     let tracks: Vec<Track> = results.into_iter().flatten().collect();
-    log::info!("[BatchFetch] Successfully fetched {} out of {} tracks", tracks.len(), tracks.len());
+    log::info!(
+        "[BatchFetch] Successfully fetched {} out of {} tracks",
+        tracks.len(),
+        tracks.len()
+    );
     tracks
 }

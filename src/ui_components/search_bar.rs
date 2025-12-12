@@ -1,6 +1,6 @@
-use eframe::egui;
 use crate::app::player_app::MusicPlayerApp;
 use crate::ui_components::colors::*;
+use eframe::egui;
 
 // UI Constants
 const BUTTON_HEIGHT: f32 = 34.0;
@@ -10,7 +10,7 @@ const SEARCH_WIDTH: f32 = 220.0;
 /// Render search bar with integrated type selector
 pub fn render_search_section(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing.x = 10.0;
-    
+
     if app.content.search_expanded {
         // Expanded search bar - height matches navigation buttons
         egui::Frame::NONE
@@ -21,12 +21,12 @@ pub fn render_search_section(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                 ui.set_height(BUTTON_HEIGHT);
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    
+
                     render_search_input(app, ui);
                     ui.separator();
                     ui.add_space(5.0);
                     render_search_type_selector(app, ui);
-                    
+
                     // X button to collapse search
                     ui.add_space(5.0);
                     let close_btn = ui.add_sized(
@@ -34,12 +34,12 @@ pub fn render_search_section(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
                         egui::Button::new(
                             egui::RichText::new("✕")
                                 .size(16.0)
-                                .color(egui::Color32::from_rgb(180, 180, 180))
+                                .color(egui::Color32::from_rgb(180, 180, 180)),
                         )
                         .fill(egui::Color32::TRANSPARENT)
-                        .corner_radius(CORNER_RADIUS)
+                        .corner_radius(CORNER_RADIUS),
                     );
-                    
+
                     if close_btn.clicked() {
                         app.content.search_expanded = false;
                     }
@@ -49,14 +49,11 @@ pub fn render_search_section(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         // Collapsed - just show search icon button
         let search_icon_btn = ui.add_sized(
             egui::vec2(BUTTON_HEIGHT, BUTTON_HEIGHT),
-            egui::Button::new(
-                egui::RichText::new("🔍")
-                    .size(14.0)
-            )
-            .fill(DARK_GRAY)
-            .corner_radius(CORNER_RADIUS)
+            egui::Button::new(egui::RichText::new("🔍").size(14.0))
+                .fill(DARK_GRAY)
+                .corner_radius(CORNER_RADIUS),
         );
-        
+
         if search_icon_btn.clicked() {
             app.content.search_expanded = true;
         }
@@ -70,9 +67,9 @@ fn render_search_input(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         egui::TextEdit::singleline(&mut app.content.search_query)
             .hint_text("Search SoundCloud...")
             .font(egui::FontId::proportional(14.0))
-            .frame(false)
+            .frame(false),
     );
-    
+
     if search_input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
         crate::screens::search::trigger_search(app);
     }
@@ -81,19 +78,28 @@ fn render_search_input(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
 /// Render search type checkboxes (Tracks/Playlists)
 fn render_search_type_selector(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
     let tracks_checked = app.content.search_type == crate::app::player_app::SearchType::Tracks;
-    if ui.checkbox(&mut tracks_checked.clone(), 
-        egui::RichText::new("Tracks").size(12.0)
-    ).clicked() {
+    if ui
+        .checkbox(
+            &mut tracks_checked.clone(),
+            egui::RichText::new("Tracks").size(12.0),
+        )
+        .clicked()
+    {
         app.content.search_type = crate::app::player_app::SearchType::Tracks;
         if !app.content.search_query.is_empty() {
             crate::screens::search::trigger_search(app);
         }
     }
-    
-    let playlists_checked = app.content.search_type == crate::app::player_app::SearchType::Playlists;
-    if ui.checkbox(&mut playlists_checked.clone(), 
-        egui::RichText::new("Playlists").size(12.0)
-    ).clicked() {
+
+    let playlists_checked =
+        app.content.search_type == crate::app::player_app::SearchType::Playlists;
+    if ui
+        .checkbox(
+            &mut playlists_checked.clone(),
+            egui::RichText::new("Playlists").size(12.0),
+        )
+        .clicked()
+    {
         app.content.search_type = crate::app::player_app::SearchType::Playlists;
         if !app.content.search_query.is_empty() {
             crate::screens::search::trigger_search(app);

@@ -1,6 +1,6 @@
 // API response wrapper types
+use super::{Playlist, Track, User};
 use serde::Deserialize;
-use super::{Track, Playlist, User};
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]

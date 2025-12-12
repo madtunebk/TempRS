@@ -1,5 +1,5 @@
 // Activities API endpoint
-use crate::models::{Track, ActivitiesResponse};
+use crate::models::{ActivitiesResponse, Track};
 
 /// Fetch recent activities (listening history) - /me/activities/tracks
 #[allow(dead_code)]
@@ -24,7 +24,7 @@ pub async fn fetch_recent_activities(
     }
 
     let activities: ActivitiesResponse = response.json().await?;
-    
+
     // Extract tracks from activities, filtering out non-track items
     let tracks: Vec<Track> = activities
         .collection

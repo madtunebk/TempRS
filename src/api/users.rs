@@ -1,5 +1,5 @@
 // User API endpoints
-use crate::models::{User, Track, TracksResponse, FavoritersResponse};
+use crate::models::{FavoritersResponse, Track, TracksResponse, User};
 
 /// Fetch users who favorited a track (for recommendations)
 /// Returns their user info to fetch their liked tracks
@@ -11,8 +11,7 @@ pub async fn fetch_track_favoriters(
 ) -> Result<Vec<User>, Box<dyn std::error::Error>> {
     let url = format!(
         "https://api.soundcloud.com/tracks/{}/favoriters?limit={}&linked_partitioning=true",
-        track_urn,
-        limit
+        track_urn, limit
     );
 
     log::debug!("[Favoriters] Fetching from: {}", url);
@@ -27,8 +26,11 @@ pub async fn fetch_track_favoriters(
     }
 
     let favoriters: FavoritersResponse = response.json().await?;
-    
-    log::info!("[Favoriters] Fetched {} favoriters", favoriters.collection.len());
+
+    log::info!(
+        "[Favoriters] Fetched {} favoriters",
+        favoriters.collection.len()
+    );
     Ok(favoriters.collection)
 }
 
@@ -41,8 +43,7 @@ pub async fn fetch_user_likes(
 ) -> Result<Vec<Track>, Box<dyn std::error::Error>> {
     let url = format!(
         "https://api.soundcloud.com/users/{}/favorites?limit={}",
-        user_id,
-        limit
+        user_id, limit
     );
 
     log::debug!("[UserLikes] Fetching from: {}", url);
@@ -57,7 +58,10 @@ pub async fn fetch_user_likes(
     }
 
     let tracks_response: TracksResponse = response.json().await?;
-    
-    log::info!("[UserLikes] Fetched {} liked tracks", tracks_response.collection.len());
+
+    log::info!(
+        "[UserLikes] Fetched {} liked tracks",
+        tracks_response.collection.len()
+    );
     Ok(tracks_response.collection)
 }

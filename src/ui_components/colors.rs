@@ -1,6 +1,5 @@
 /// Centralized color palette for TempRS application
 /// Following dark theme design with consistent color hierarchy
-
 use eframe::egui::Color32;
 
 // Primary brand colors
@@ -12,25 +11,25 @@ pub const ORANGE_HOVER: Color32 = Color32::from_rgb(255, 138, 43);
 pub const ORANGE_LIGHT: Color32 = Color32::from_rgb(255, 120, 40);
 
 // Background colors (from darkest to lightest)
-pub const BG_MAIN: Color32 = Color32::from_rgb(16, 16, 16);         // #101010 - Main background
-pub const BG_CARD: Color32 = Color32::from_rgb(18, 18, 18);         // #121212 - Cards, panels
-pub const BG_HOVER: Color32 = Color32::from_rgb(26, 26, 26);        // #1A1A1A - Hover states
+pub const BG_MAIN: Color32 = Color32::from_rgb(16, 16, 16); // #101010 - Main background
+pub const BG_CARD: Color32 = Color32::from_rgb(18, 18, 18); // #121212 - Cards, panels
+pub const BG_HOVER: Color32 = Color32::from_rgb(26, 26, 26); // #1A1A1A - Hover states
 #[allow(dead_code)]
-pub const BG_INPUT: Color32 = Color32::from_rgb(30, 30, 32);        // Input fields
-pub const BG_BUTTON: Color32 = Color32::from_rgb(35, 35, 40);       // Default buttons
+pub const BG_INPUT: Color32 = Color32::from_rgb(30, 30, 32); // Input fields
+pub const BG_BUTTON: Color32 = Color32::from_rgb(35, 35, 40); // Default buttons
 pub const BG_BUTTON_HOVER: Color32 = Color32::from_rgb(45, 45, 50); // Button hover
 
 // Legacy color names for backward compatibility (will eventually be replaced)
-pub const DARK_GRAY: Color32 = Color32::from_rgb(30, 30, 32);      // Maps to BG_INPUT
-pub const MID_GRAY: Color32 = Color32::from_rgb(45, 45, 50);       // Maps to BG_BUTTON_HOVER
-pub const LIGHT_GRAY: Color32 = Color32::from_rgb(160, 160, 160);  // Maps to TEXT_SECONDARY
+pub const DARK_GRAY: Color32 = Color32::from_rgb(30, 30, 32); // Maps to BG_INPUT
+pub const MID_GRAY: Color32 = Color32::from_rgb(45, 45, 50); // Maps to BG_BUTTON_HOVER
+pub const LIGHT_GRAY: Color32 = Color32::from_rgb(160, 160, 160); // Maps to TEXT_SECONDARY
 
 // Text colors
-pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(240, 240, 240);    // Primary text
-pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(160, 160, 160);  // Secondary text
-pub const TEXT_TERTIARY: Color32 = Color32::from_rgb(120, 120, 120);   // Tertiary/disabled text
+pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(240, 240, 240); // Primary text
+pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(160, 160, 160); // Secondary text
+pub const TEXT_TERTIARY: Color32 = Color32::from_rgb(120, 120, 120); // Tertiary/disabled text
 #[allow(dead_code)]
-pub const TEXT_INVERSE: Color32 = Color32::WHITE;                      // Text on colored backgrounds
+pub const TEXT_INVERSE: Color32 = Color32::WHITE; // Text on colored backgrounds
 
 // Skeleton/loading colors
 #[allow(dead_code)]

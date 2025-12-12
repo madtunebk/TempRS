@@ -1,5 +1,5 @@
 // Audio FFT module - currently unused but kept for future audio visualization features
-use rustfft::{FftPlanner, num_complex::Complex};
+use rustfft::{num_complex::Complex, FftPlanner};
 use std::sync::{Arc, Mutex};
 
 #[allow(dead_code)]
@@ -39,15 +39,17 @@ impl AudioFFT {
 
     /// Add audio samples to the buffer (called from audio thread)
     pub fn push_samples(&self, samples: &[i16]) {
-        let Some(mut buffer) = crate::utils::error_handling::safe_lock(&self.sample_buffer, "AudioFFT") else {
+        let Some(mut buffer) =
+            crate::utils::error_handling::safe_lock(&self.sample_buffer, "AudioFFT")
+        else {
             return;
         };
-        
+
         // Convert i16 samples to f32 and normalize
         for &sample in samples {
             let normalized = sample as f32 / 32768.0;
             buffer.push(normalized);
-            
+
             // Keep buffer size manageable
             if buffer.len() > FFT_SIZE * 2 {
                 let drain_count = buffer.len() - FFT_SIZE;
@@ -58,10 +60,11 @@ impl AudioFFT {
 
     /// Process current samples and update frequency data
     pub fn update(&mut self) {
-        let Some(buffer) = crate::utils::error_handling::safe_lock(&self.sample_buffer, "AudioFFT") else {
+        let Some(buffer) = crate::utils::error_handling::safe_lock(&self.sample_buffer, "AudioFFT")
+        else {
             return;
         };
-        
+
         if buffer.len() < FFT_SIZE {
             return; // Not enough samples yet
         }
@@ -75,7 +78,11 @@ impl AudioFFT {
             .iter()
             .enumerate()
             .map(|(i, &s)| {
-                let window = 0.5 * (1.0 - f32::cos(2.0 * std::f32::consts::PI * i as f32 / (FFT_SIZE as f32 - 1.0)));
+                let window = 0.5
+                    * (1.0
+                        - f32::cos(
+                            2.0 * std::f32::consts::PI * i as f32 / (FFT_SIZE as f32 - 1.0),
+                        ));
                 Complex::new(s * window, 0.0)
             })
             .collect();
@@ -85,27 +92,29 @@ impl AudioFFT {
         fft.process(&mut windowed);
 
         // Convert to magnitude spectrum and group into bands
-        let Some(mut freq_data) = crate::utils::error_handling::safe_lock(&self.frequency_data, "AudioFFT") else {
+        let Some(mut freq_data) =
+            crate::utils::error_handling::safe_lock(&self.frequency_data, "AudioFFT")
+        else {
             return;
         };
-        
+
         // We only care about first half of FFT (Nyquist)
         let bin_per_band = (FFT_SIZE / 2) / NUM_FREQUENCY_BANDS;
-        
+
         for band in 0..NUM_FREQUENCY_BANDS {
             let start_bin = band * bin_per_band;
             let end_bin = (start_bin + bin_per_band).min(FFT_SIZE / 2);
-            
+
             let mut magnitude = 0.0;
-            for bin in start_bin..end_bin {
-                magnitude += windowed[bin].norm();
+            for val in windowed.iter().take(end_bin).skip(start_bin) {
+                magnitude += val.norm();
             }
             magnitude /= bin_per_band as f32;
-            
+
             // Apply smoothing and logarithmic scaling
             let smoothing = 0.7; // Higher = smoother
             freq_data[band] = freq_data[band] * smoothing + magnitude * (1.0 - smoothing);
-            
+
             // Normalize to 0-1 range with some headroom
             freq_data[band] = (freq_data[band] * 2.0).min(1.0);
         }

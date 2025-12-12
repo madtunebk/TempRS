@@ -18,7 +18,7 @@ pub struct ShaderUniforms {
     pub gamma: f32,
     pub contrast: f32,
     pub saturation: f32,
-    pub _pad0: f32,  // Padding for 16-byte alignment (11 floats, need 1 more for 12)
+    pub _pad0: f32, // Padding for 16-byte alignment (11 floats, need 1 more for 12)
 }
 
 // Shader pipeline wrapper
@@ -114,7 +114,10 @@ impl ShaderPipeline {
             cache: None,
         });
 
-        log::info!("Shader pipeline created successfully (format: {:?})", format);
+        log::info!(
+            "Shader pipeline created successfully (format: {:?})",
+            format
+        );
 
         Ok(Self {
             pipeline,

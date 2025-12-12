@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use super::{Track, User};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]

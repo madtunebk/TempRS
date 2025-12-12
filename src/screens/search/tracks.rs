@@ -1,10 +1,14 @@
-use eframe::egui::{self, Vec2, Sense, Color32, CornerRadius};
 use crate::app::player_app::MusicPlayerApp;
-use crate::ui_components::helpers::{truncate_text, calculate_grid_layout};
+use crate::ui_components::helpers::{calculate_grid_layout, truncate_text};
 use crate::utils::artwork::load_thumbnail_artwork;
+use eframe::egui::{self, Color32, CornerRadius, Sense, Vec2};
 
 /// Render tracks search results grid with pagination
-pub fn render_tracks_grid_paginated(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+pub fn render_tracks_grid_paginated(
+    app: &mut MusicPlayerApp,
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+) {
     if app.content.search_results_tracks.is_empty() {
         ui.vertical_centered(|ui| {
             ui.add_space(100.0);
@@ -26,12 +30,12 @@ pub fn render_tracks_grid_paginated(app: &mut MusicPlayerApp, ui: &mut egui::Ui,
     // Calculate pagination
     let offset = app.content.search_page * app.content.search_page_size;
     let end = (offset + app.content.search_page_size).min(app.content.search_results_tracks.len());
-    
+
     if offset >= app.content.search_results_tracks.len() {
         // Reset to first page if out of bounds
         return;
     }
-    
+
     let page_tracks: Vec<_> = app.content.search_results_tracks[offset..end].to_vec();
     let (items_per_row, padding) = calculate_grid_layout(ui.available_width(), 220.0, 15.0);
 
@@ -58,18 +62,14 @@ fn render_track_item(
 ) {
     let hover_bg = Color32::from_rgb(40, 40, 45);
 
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(size, size + 55.0),
-        Sense::click(),
-    );
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(size, size + 55.0), Sense::click());
 
     if response.hovered() {
         ui.painter()
             .rect_filled(rect, CornerRadius::same(6), hover_bg);
     }
 
-    let artwork_rect =
-        egui::Rect::from_min_size(rect.min, Vec2::new(size, size));
+    let artwork_rect = egui::Rect::from_min_size(rect.min, Vec2::new(size, size));
 
     let artwork_url = track
         .artwork_url
@@ -83,10 +83,7 @@ fn render_track_item(
             ui.painter().image(
                 texture.id(),
                 artwork_rect,
-                egui::Rect::from_min_max(
-                    egui::pos2(0.0, 0.0),
-                    egui::pos2(1.0, 1.0),
-                ),
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                 Color32::WHITE,
             );
         } else {

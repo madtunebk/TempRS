@@ -1,6 +1,6 @@
-use std::sync::mpsc::Receiver;
-use egui::ColorImage;
 use crate::app::playlists::{Playlist, Track};
+use egui::ColorImage;
+use std::sync::mpsc::Receiver;
 
 pub struct SearchResults {
     pub tracks: Vec<Track>,
@@ -9,6 +9,7 @@ pub struct SearchResults {
 }
 
 #[derive(Default)]
+#[allow(clippy::type_complexity)]
 pub struct BackgroundTasks {
     // Search Results
     pub search_rx: Option<Receiver<SearchResults>>,
@@ -20,7 +21,7 @@ pub struct BackgroundTasks {
     // Home Screen Content
     pub home_recently_played_rx: Option<Receiver<Vec<Track>>>,
     pub home_recommendations_rx: Option<Receiver<Vec<Track>>>,
-    pub track_fetch_rx: Option<Receiver<(u64, Result<Vec<Track>, String>)>>,  // (session, result)
+    pub track_fetch_rx: Option<Receiver<(u64, Result<Vec<Track>, String>)>>, // (session, result)
 
     // Suggestions Screen
     pub suggestions_rx: Option<Receiver<Vec<Track>>>,
@@ -41,7 +42,6 @@ pub struct BackgroundTasks {
     // Stream URL Prefetch (session, track_id, cdn_url)
     pub prefetch_rx: Option<Receiver<(u64, u64, String)>>,
 }
-
 
 impl BackgroundTasks {
     /// Check if any background task is active

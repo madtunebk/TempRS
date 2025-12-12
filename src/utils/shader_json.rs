@@ -1,8 +1,8 @@
 #![allow(dead_code)]
+use crate::utils::shader_constants::{SHADER_BOILERPLATE, STANDARD_VERTEX, TEXTURE_BINDINGS};
+use crate::utils::BufferKind;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::utils::BufferKind;
-use crate::utils::shader_constants::{SHADER_BOILERPLATE, STANDARD_VERTEX, TEXTURE_BINDINGS};
 
 /// JSON shader format for editor exports
 /// Supports both plain text and base64-encoded shaders
@@ -21,7 +21,7 @@ pub struct ShaderJson {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vertex: Option<String>,
 
-    pub fragment: String,  // MainImage - required
+    pub fragment: String, // MainImage - required
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buffer_a: Option<String>,
@@ -106,14 +106,26 @@ impl ShaderJson {
     /// Returns array of Option<Vec<u8>> for iChannel0-3
     pub fn decode_embedded_images(&self) -> [Option<Vec<u8>>; 4] {
         let mut images = [None, None, None, None];
-        
-        let channels = [&self.ichannel0, &self.ichannel1, &self.ichannel2, &self.ichannel3];
-        
+
+        let channels = [
+            &self.ichannel0,
+            &self.ichannel1,
+            &self.ichannel2,
+            &self.ichannel3,
+        ];
+
         for (i, channel) in channels.iter().enumerate() {
             if let Some(base64_data) = channel {
-                match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_data) {
+                match base64::Engine::decode(
+                    &base64::engine::general_purpose::STANDARD,
+                    base64_data,
+                ) {
                     Ok(bytes) => {
-                        log::info!("Decoded embedded image for iChannel{} ({} bytes)", i, bytes.len());
+                        log::info!(
+                            "Decoded embedded image for iChannel{} ({} bytes)",
+                            i,
+                            bytes.len()
+                        );
                         images[i] = Some(bytes);
                     }
                     Err(e) => {
@@ -122,7 +134,7 @@ impl ShaderJson {
                 }
             }
         }
-        
+
         images
     }
 
@@ -141,8 +153,7 @@ impl ShaderJson {
         let boilerplate = SHADER_BOILERPLATE;
 
         // Vertex shader (use provided or standard default)
-        let vertex_shader = self.vertex.as_deref()
-            .unwrap_or(STANDARD_VERTEX);
+        let vertex_shader = self.vertex.as_deref().unwrap_or(STANDARD_VERTEX);
 
         // Process BufferA
         if let Some(buffer_a_code) = &self.buffer_a {
@@ -171,7 +182,10 @@ impl ShaderJson {
         // Process MainImage (fragment)
         // If we have buffers, inject texture bindings for BufferA-D access
         let main_image_code = if has_buffers {
-            format!("{}\n{}\n{}\n{}", boilerplate, TEXTURE_BINDINGS, vertex_shader, &self.fragment)
+            format!(
+                "{}\n{}\n{}\n{}",
+                boilerplate, TEXTURE_BINDINGS, vertex_shader, &self.fragment
+            )
         } else {
             format!("{}\n{}\n{}", boilerplate, vertex_shader, &self.fragment)
         };
@@ -206,7 +220,10 @@ mod tests {
 
         assert_eq!(map.len(), 1);
         assert!(map.contains_key(&BufferKind::MainImage));
-        assert!(!map.get(&BufferKind::MainImage).unwrap().contains("buffer_a_texture"));
+        assert!(!map
+            .get(&BufferKind::MainImage)
+            .unwrap()
+            .contains("buffer_a_texture"));
     }
 
     #[test]
@@ -223,6 +240,9 @@ mod tests {
         assert_eq!(map.len(), 2);
         assert!(map.contains_key(&BufferKind::MainImage));
         assert!(map.contains_key(&BufferKind::BufferA));
-        assert!(map.get(&BufferKind::MainImage).unwrap().contains("buffer_a_texture"));
+        assert!(map
+            .get(&BufferKind::MainImage)
+            .unwrap()
+            .contains("buffer_a_texture"));
     }
 }

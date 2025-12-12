@@ -1,8 +1,8 @@
-use crate::utils::audio_controller::AudioController;
 use crate::app::queue::PlaybackQueue;
 use crate::app_state::RepeatMode;
-use std::sync::Arc;
+use crate::utils::audio_controller::AudioController;
 use std::sync::atomic::AtomicU32;
+use std::sync::Arc;
 use std::time::Instant;
 
 pub struct AudioState {
@@ -34,14 +34,14 @@ pub struct AudioState {
     pub volume: f32,
     pub muted: bool,
     pub volume_before_mute: f32,
-    pub track_finished_handled: bool,  // Debounce flag to prevent repeated "track finished" triggers
-    pub playback_session: u64,  // Session counter to guard async callbacks from stale operations
+    pub track_finished_handled: bool, // Debounce flag to prevent repeated "track finished" triggers
+    pub playback_session: u64, // Session counter to guard async callbacks from stale operations
 
     // Stream URL Prefetch (4 fields) - reduces auto-play latency and prevents network errors
-    pub prefetch_cdn_url: Option<String>,       // Pre-fetched CDN redirect URL
-    pub prefetch_timestamp: Option<Instant>,    // When the prefetch occurred
-    pub prefetched_for_track_id: Option<u64>,   // Track ID this prefetch is for
-    pub prefetch_triggered: bool,               // Prevent duplicate prefetch attempts
+    pub prefetch_cdn_url: Option<String>, // Pre-fetched CDN redirect URL
+    pub prefetch_timestamp: Option<Instant>, // When the prefetch occurred
+    pub prefetched_for_track_id: Option<u64>, // Track ID this prefetch is for
+    pub prefetch_triggered: bool,         // Prevent duplicate prefetch attempts
 }
 
 impl Default for AudioState {
@@ -62,9 +62,21 @@ impl AudioState {
 
         Self {
             audio_controller: AudioController::new(
-                if enable_fft { Some(Arc::clone(&bass_energy)) } else { None },
-                if enable_fft { Some(Arc::clone(&mid_energy)) } else { None },
-                if enable_fft { Some(Arc::clone(&high_energy)) } else { None },
+                if enable_fft {
+                    Some(Arc::clone(&bass_energy))
+                } else {
+                    None
+                },
+                if enable_fft {
+                    Some(Arc::clone(&mid_energy))
+                } else {
+                    None
+                },
+                if enable_fft {
+                    Some(Arc::clone(&high_energy))
+                } else {
+                    None
+                },
             ),
             playback_queue: PlaybackQueue::new(),
             current_track_id: None,
@@ -126,6 +138,7 @@ impl AudioState {
     }
 
     /// Clear prefetch cache
+    #[allow(dead_code)]
     pub fn clear_prefetch(&mut self) {
         self.prefetch_cdn_url = None;
         self.prefetch_timestamp = None;
@@ -144,5 +157,4 @@ impl AudioState {
             false
         }
     }
-
 }

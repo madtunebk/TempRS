@@ -1,11 +1,15 @@
-use eframe::egui::{self, Vec2, Sense, Color32, CornerRadius};
 use crate::app::player_app::MusicPlayerApp;
-use crate::ui_components::helpers::{truncate_text, calculate_grid_layout};
+use crate::ui_components::helpers::{calculate_grid_layout, truncate_text};
 use crate::utils::artwork::load_thumbnail_artwork;
+use eframe::egui::{self, Color32, CornerRadius, Sense, Vec2};
 use std::sync::mpsc::channel;
 
 /// Render playlists search results grid with pagination
-pub fn render_playlists_grid_paginated(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+pub fn render_playlists_grid_paginated(
+    app: &mut MusicPlayerApp,
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+) {
     if app.content.search_results_playlists.is_empty() {
         ui.vertical_centered(|ui| {
             ui.add_space(100.0);
@@ -26,13 +30,14 @@ pub fn render_playlists_grid_paginated(app: &mut MusicPlayerApp, ui: &mut egui::
 
     // Calculate pagination
     let offset = app.content.search_page * app.content.search_page_size;
-    let end = (offset + app.content.search_page_size).min(app.content.search_results_playlists.len());
-    
+    let end =
+        (offset + app.content.search_page_size).min(app.content.search_results_playlists.len());
+
     if offset >= app.content.search_results_playlists.len() {
         // Reset to first page if out of bounds
         return;
     }
-    
+
     let page_playlists: Vec<_> = app.content.search_results_playlists[offset..end].to_vec();
     let (items_per_row, padding) = calculate_grid_layout(ui.available_width(), 220.0, 15.0);
 
@@ -59,16 +64,14 @@ fn render_playlist_item(
 ) {
     let hover_bg = Color32::from_rgb(40, 40, 45);
 
-    let (rect, response) =
-        ui.allocate_exact_size(Vec2::new(size, size + 55.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(size, size + 55.0), Sense::click());
 
     if response.hovered() {
         ui.painter()
             .rect_filled(rect, CornerRadius::same(6), hover_bg);
     }
 
-    let artwork_rect =
-        egui::Rect::from_min_size(rect.min, Vec2::new(size, size));
+    let artwork_rect = egui::Rect::from_min_size(rect.min, Vec2::new(size, size));
 
     let artwork_url = playlist
         .artwork_url
@@ -82,10 +85,7 @@ fn render_playlist_item(
             ui.painter().image(
                 texture.id(),
                 artwork_rect,
-                egui::Rect::from_min_max(
-                    egui::pos2(0.0, 0.0),
-                    egui::pos2(1.0, 1.0),
-                ),
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                 Color32::WHITE,
             );
         } else {
@@ -110,23 +110,20 @@ fn render_playlist_item(
     let heart_response = ui.interact(
         heart_rect,
         ui.id().with(("search_playlist_like", playlist.id)),
-        Sense::click()
+        Sense::click(),
     );
 
     // Heart button background (circle) with color based on state
     let bg_color = if heart_response.hovered() {
-        Color32::from_rgba_premultiplied(255, 50, 50, 200)  // Red on hover
+        Color32::from_rgba_premultiplied(255, 50, 50, 200) // Red on hover
     } else if is_liked {
-        Color32::from_rgba_premultiplied(255, 85, 0, 200)  // Orange when liked
+        Color32::from_rgba_premultiplied(255, 85, 0, 200) // Orange when liked
     } else {
-        Color32::from_rgba_premultiplied(80, 80, 80, 200)  // Gray when not liked
+        Color32::from_rgba_premultiplied(80, 80, 80, 200) // Gray when not liked
     };
 
-    ui.painter().circle_filled(
-        heart_rect.center(),
-        heart_size / 2.0,
-        bg_color
-    );
+    ui.painter()
+        .circle_filled(heart_rect.center(), heart_size / 2.0, bg_color);
 
     // Heart icon (filled if liked, broken if not)
     let heart_icon = if is_liked { "❤" } else { "💔" };
@@ -135,12 +132,16 @@ fn render_playlist_item(
         egui::Align2::CENTER_CENTER,
         heart_icon,
         egui::FontId::proportional(16.0),
-        Color32::WHITE
+        Color32::WHITE,
     );
 
     // Handle like/unlike click
     if heart_response.clicked() {
-        log::info!("[Search] Toggle like for playlist: {} ({})", playlist.title, playlist.id);
+        log::info!(
+            "[Search] Toggle like for playlist: {} ({})",
+            playlist.title,
+            playlist.id
+        );
         app.toggle_playlist_like(playlist.id);
         return; // Don't trigger playlist load
     }
@@ -237,9 +238,7 @@ fn load_playlist(app: &mut MusicPlayerApp, playlist: &crate::app::playlists::Pla
         let token = match app.content.app_state.get_token() {
             Some(t) => t,
             None => {
-                log::error!(
-                    "[Search] No token available for fetching full playlist"
-                );
+                log::error!("[Search] No token available for fetching full playlist");
                 return;
             }
         };
@@ -254,17 +253,10 @@ fn load_playlist(app: &mut MusicPlayerApp, playlist: &crate::app::playlists::Pla
                 .build()
                 .unwrap();
             rt.block_on(async {
-                if let Err(e) = crate::app::playlists::fetch_playlist_chunks(
-                    &token,
-                    playlist_id,
-                    tx,
-                )
-                .await
+                if let Err(e) =
+                    crate::app::playlists::fetch_playlist_chunks(&token, playlist_id, tx).await
                 {
-                    log::error!(
-                        "[Search] Failed to fetch playlist chunks: {}",
-                        e
-                    );
+                    log::error!("[Search] Failed to fetch playlist chunks: {}", e);
                 }
             });
         });

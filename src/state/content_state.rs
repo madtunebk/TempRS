@@ -1,8 +1,8 @@
-use std::collections::HashSet;
 use crate::app::playlists::{Playlist, Track};
 use crate::app_state::AppState;
 use crate::data::home_data::HomeContent;
 use crate::utils::playback_history::PlaybackHistoryDB;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SearchType {
@@ -13,25 +13,25 @@ pub enum SearchType {
 /// Sort order for Likes tab
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LikesSortOrder {
-    RecentFirst,    // Most recently liked first (default)
-    TitleAZ,        // Alphabetical by title
-    ArtistAZ,       // Alphabetical by artist
+    RecentFirst, // Most recently liked first (default)
+    TitleAZ,     // Alphabetical by title
+    ArtistAZ,    // Alphabetical by artist
 }
 
 /// Sort order for Playlists tab
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PlaylistsSortOrder {
-    RecentFirst,    // Most recently added first (default)
-    NameAZ,         // Alphabetical by name
-    TrackCount,     // By number of tracks
+    RecentFirst, // Most recently added first (default)
+    NameAZ,      // Alphabetical by name
+    TrackCount,  // By number of tracks
 }
 
 /// Sort order for Suggestions tab
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SuggestionsSortOrder {
-    Default,        // As returned by API (default)
-    TitleAZ,        // Alphabetical by title
-    ArtistAZ,       // Alphabetical by artist
+    Default,  // As returned by API (default)
+    TitleAZ,  // Alphabetical by title
+    ArtistAZ, // Alphabetical by artist
 }
 
 pub struct ContentState {

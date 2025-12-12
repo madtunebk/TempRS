@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::User;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[allow(dead_code)]

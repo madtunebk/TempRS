@@ -1,5 +1,5 @@
-use std::sync::{Mutex, MutexGuard};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use tokio::runtime::Runtime;
 
 /// Creates a lightweight single-threaded Tokio runtime

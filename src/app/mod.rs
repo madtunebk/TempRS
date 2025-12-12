@@ -1,6 +1,6 @@
 pub mod player_app;
-pub mod queue;
 pub mod playlists;
+pub mod queue;
 pub mod shader_manager;
 
 pub use player_app::MusicPlayerApp;

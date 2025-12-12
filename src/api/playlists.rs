@@ -87,25 +87,32 @@ pub async fn fetch_playlist_chunks(
         let tracks_response: TracksResponse = response.json().await?;
         let chunk_size = tracks_response.collection.len();
         total_fetched += chunk_size;
-        
-        log::debug!("[Playlists] Fetched chunk of {} tracks (total: {})", chunk_size, total_fetched);
-        
+
+        log::debug!(
+            "[Playlists] Fetched chunk of {} tracks (total: {})",
+            chunk_size,
+            total_fetched
+        );
+
         // Send chunk immediately
         if let Err(e) = tx.send(tracks_response.collection) {
             log::error!("[Playlists] Failed to send chunk: {}", e);
             break;
         }
-        
+
         next_url = tracks_response.next_href;
-        
+
         // Small delay between chunks to avoid overwhelming the receiver
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     }
-    
+
     // Send empty vec to signal completion
     let _ = tx.send(Vec::new());
-    
-    log::info!("[Playlists] Completed fetching {} total tracks", total_fetched);
+
+    log::info!(
+        "[Playlists] Completed fetching {} total tracks",
+        total_fetched
+    );
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 /// Clipboard utilities for sharing track URLs and other content
-use log::{info, error, warn};
+use log::{error, info, warn};
 
 /// Copy text to system clipboard
 /// Returns true if successful, false otherwise
@@ -8,25 +8,23 @@ pub fn copy_to_clipboard(text: &str, context: &str) -> bool {
     {
         use arboard::Clipboard;
         match Clipboard::new() {
-            Ok(mut clipboard) => {
-                match clipboard.set_text(text) {
-                    Ok(_) => {
-                        info!("[Clipboard] Copied {} to clipboard: {}", context, text);
-                        true
-                    }
-                    Err(e) => {
-                        error!("[Clipboard] Failed to copy {} to clipboard: {}", context, e);
-                        false
-                    }
+            Ok(mut clipboard) => match clipboard.set_text(text) {
+                Ok(_) => {
+                    info!("[Clipboard] Copied {} to clipboard: {}", context, text);
+                    true
                 }
-            }
+                Err(e) => {
+                    error!("[Clipboard] Failed to copy {} to clipboard: {}", context, e);
+                    false
+                }
+            },
             Err(e) => {
                 error!("[Clipboard] Failed to access clipboard: {}", e);
                 false
             }
         }
     }
-    
+
     #[cfg(target_arch = "wasm32")]
     {
         warn!("[Clipboard] Clipboard not supported on WASM target");

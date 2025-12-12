@@ -1,5 +1,5 @@
-use sha2::{Sha256, Digest};
 use base64::Engine;
+use sha2::{Digest, Sha256};
 
 #[cfg(target_os = "linux")]
 fn get_machine_key() -> Option<String> {
@@ -13,8 +13,7 @@ fn get_machine_key() -> Option<String> {
 
 #[cfg(target_os = "linux")]
 fn cpu_signature() -> String {
-    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo")
-        .unwrap_or_default();
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
 
     let mut vendor = String::new();
     let mut model = String::new();
@@ -36,7 +35,7 @@ fn cpu_signature() -> String {
 
 #[cfg(target_os = "windows")]
 fn get_machine_key() -> Option<String> {
-    use winreg::{RegKey, enums::HKEY_LOCAL_MACHINE};
+    use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
 
     // Main machine GUID
     let key = RegKey::predef(HKEY_LOCAL_MACHINE)
@@ -52,7 +51,7 @@ fn get_machine_key() -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn cpu_signature() -> String {
-    use winreg::{RegKey, enums::HKEY_LOCAL_MACHINE};
+    use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
 
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
 
@@ -85,8 +84,7 @@ fn get_machine_key() -> Option<String> {
 
 #[cfg(target_os = "android")]
 fn cpu_signature() -> String {
-    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo")
-        .unwrap_or_default();
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
 
     let mut hardware = String::new();
     let mut processor = String::new();

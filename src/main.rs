@@ -1,18 +1,18 @@
 //#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
-mod utils;
-mod ui_components;
-mod screens;
+mod api;
 mod app;
 mod app_state;
-mod models;
-mod api;
+mod constants;
 mod data;
+mod models;
+mod screens;
 mod services;
 mod state;
-mod constants;
+mod ui_components;
+mod utils;
 
-use eframe::egui;
 use app::MusicPlayerApp;
+use eframe::egui;
 
 // App version and metadata
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -41,7 +41,8 @@ fn main() -> Result<(), eframe::Error> {
 
     // Detect GPU and decide rendering backend
     let (use_gpu, gpu_info) = should_use_gpu();
-    log::info!("[Main] GPU Detection Result: {} | Using: {}",
+    log::info!(
+        "[Main] GPU Detection Result: {} | Using: {}",
         gpu_info,
         if use_gpu { "WGPU (GPU)" } else { "GLOW (CPU)" }
     );
@@ -58,20 +59,23 @@ fn main() -> Result<(), eframe::Error> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title(format!("{} v{} - {}", APP_NAME, APP_VERSION, APP_DESCRIPTION))
-            .with_inner_size([APP_WIDTH, APP_HEIGHT])         // Initial size
-            .with_min_inner_size([APP_WIDTH, APP_HEIGHT])     // Minimum size
-            .with_resizable(true)                 // Disable resize
-            .with_maximize_button(true)           // Disable/Enable maximize button
-            .with_maximized(true)                 // Start maximized
-            .with_decorations(true)               // OS window decorations enabled
+            .with_title(format!(
+                "{} v{} - {}",
+                APP_NAME, APP_VERSION, APP_DESCRIPTION
+            ))
+            .with_inner_size([APP_WIDTH, APP_HEIGHT]) // Initial size
+            .with_min_inner_size([APP_WIDTH, APP_HEIGHT]) // Minimum size
+            .with_resizable(true) // Disable resize
+            .with_maximize_button(true) // Disable/Enable maximize button
+            .with_maximized(true) // Start maximized
+            .with_decorations(true) // OS window decorations enabled
             .with_icon(icon_data),
-        vsync: false,                             // Disable vsync for higher FPS
-        persist_window: true,                     // Remember window position
+        vsync: false,         // Disable vsync for higher FPS
+        persist_window: true, // Remember window position
         renderer: if use_gpu {
-            eframe::Renderer::Wgpu  // GPU-accelerated with shader support
+            eframe::Renderer::Wgpu // GPU-accelerated with shader support
         } else {
-            eframe::Renderer::Glow  // CPU rendering, no shader overhead
+            eframe::Renderer::Glow // CPU rendering, no shader overhead
         },
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             present_mode: eframe::egui_wgpu::wgpu::PresentMode::Fifo,
@@ -95,37 +99,37 @@ fn main() -> Result<(), eframe::Error> {
 fn load_icon() -> egui::IconData {
     let (icon_width, icon_height) = (64, 64);
     let mut pixels = vec![0u8; icon_width * icon_height * 4];
-    
+
     // Create orange gradient background (SoundCloud orange theme)
     for y in 0..icon_height {
         for x in 0..icon_width {
             let idx = (y * icon_width + x) * 4;
             let brightness = 1.0 - (y as f32 / icon_height as f32) * 0.3;
-            
-            pixels[idx] = (255.0 * brightness) as u8;     // R
-            pixels[idx + 1] = (85.0 * brightness) as u8;  // G
-            pixels[idx + 2] = 0;                          // B
-            pixels[idx + 3] = 255;                        // A
+
+            pixels[idx] = (255.0 * brightness) as u8; // R
+            pixels[idx + 1] = (85.0 * brightness) as u8; // G
+            pixels[idx + 2] = 0; // B
+            pixels[idx + 3] = 255; // A
         }
     }
-    
+
     // Draw a simple music note in white (center)
     let center_x = icon_width / 2;
     let center_y = icon_height / 2;
-    
+
     // Vertical stem
     for y in (center_y - 16)..(center_y + 4) {
         for x in (center_x + 4)..(center_x + 8) {
             if x < icon_width && y < icon_height {
                 let idx = (y * icon_width + x) * 4;
-                pixels[idx] = 255;     // R
+                pixels[idx] = 255; // R
                 pixels[idx + 1] = 255; // G
                 pixels[idx + 2] = 255; // B
                 pixels[idx + 3] = 255; // A
             }
         }
     }
-    
+
     // Note head (circle)
     for y in (center_y)..(center_y + 10) {
         for x in (center_x - 6)..(center_x + 4) {
@@ -133,14 +137,14 @@ fn load_icon() -> egui::IconData {
             let dy = y as i32 - (center_y + 5) as i32;
             if dx * dx + dy * dy < 25 && x < icon_width && y < icon_height {
                 let idx = (y * icon_width + x) * 4;
-                pixels[idx] = 255;     // R
+                pixels[idx] = 255; // R
                 pixels[idx + 1] = 255; // G
                 pixels[idx + 2] = 255; // B
                 pixels[idx + 3] = 255; // A
             }
         }
     }
-    
+
     egui::IconData {
         rgba: pixels,
         width: icon_width as u32,
@@ -151,7 +155,7 @@ fn load_icon() -> egui::IconData {
 /// Setup custom fonts including emoji support for consistent cross-platform rendering
 fn setup_custom_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
-    
+
     // Add JetBrains Mono as primary UI font (clean, modern, readable)
     fonts.font_data.insert(
         "JetBrainsMono-Regular".to_string(),
@@ -159,14 +163,14 @@ fn setup_custom_fonts(ctx: &egui::Context) {
             "assets/fonts/JetBrainsMono-Regular.ttf"
         ))),
     );
-    
+
     fonts.font_data.insert(
         "JetBrainsMono-Medium".to_string(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
             "assets/fonts/JetBrainsMono-Medium.ttf"
         ))),
     );
-    
+
     // Add Noto Emoji font (monochrome version - egui doesn't support color emoji)
     fonts.font_data.insert(
         "emoji".to_string(),
@@ -174,29 +178,33 @@ fn setup_custom_fonts(ctx: &egui::Context) {
             "assets/fonts/NotoEmoji-Regular.ttf"
         ))),
     );
-    
+
     // Set JetBrains Mono as primary, emoji as fallback
-    fonts.families
+    fonts
+        .families
         .get_mut(&egui::FontFamily::Proportional)
         .unwrap()
         .insert(0, "JetBrainsMono-Regular".to_string());
-    
-    fonts.families
+
+    fonts
+        .families
         .get_mut(&egui::FontFamily::Proportional)
         .unwrap()
         .push("emoji".to_string());
-    
+
     // Monospace uses JetBrains Mono (perfect for code/logs)
-    fonts.families
+    fonts
+        .families
         .get_mut(&egui::FontFamily::Monospace)
         .unwrap()
         .insert(0, "JetBrainsMono-Medium".to_string());
-    
-    fonts.families
+
+    fonts
+        .families
         .get_mut(&egui::FontFamily::Monospace)
         .unwrap()
         .push("emoji".to_string());
-    
+
     ctx.set_fonts(fonts);
     log::info!("[Main] Custom fonts loaded: JetBrains Mono + Noto Emoji");
 }
@@ -266,7 +274,10 @@ fn should_use_gpu() -> (bool, String) {
         log::warn!("[GPU] Only integrated GPU available");
         log::warn!("[GPU] Using CPU rendering to prevent high CPU usage from iGPU");
         log::warn!("[GPU] Shaders will be disabled");
-        (false, format!("{} (iGPU - disabled to save CPU)", integrated_name))
+        (
+            false,
+            format!("{} (iGPU - disabled to save CPU)", integrated_name),
+        )
     } else {
         log::warn!("[GPU] No dedicated/integrated GPU found - using CPU rendering");
         (false, "No suitable GPU".to_string())
@@ -275,9 +286,7 @@ fn should_use_gpu() -> (bool, String) {
 
 #[allow(dead_code)]
 fn detect_window_size() -> (f32, f32) {
-    if let Some(monitor) = eframe::egui::Context::default()
-        .input(|i| i.viewport().monitor_size)
-    {
+    if let Some(monitor) = eframe::egui::Context::default().input(|i| i.viewport().monitor_size) {
         // Use 1920x1080 if monitor is large enough, otherwise 1280x720
         if monitor.x >= 1920.0 && monitor.y >= 1080.0 {
             (1920.0, 1080.0)

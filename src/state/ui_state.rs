@@ -1,8 +1,8 @@
+use crate::app::shader_manager::ShaderManager;
+use crate::ui_components::toast::ToastManager;
 use egui::{Color32, TextureHandle};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use crate::app::shader_manager::ShaderManager;
-use crate::ui_components::toast::ToastManager;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum AppScreen {
@@ -37,7 +37,7 @@ pub struct UIState {
     pub artwork_texture: Option<TextureHandle>,
     pub artwork_loading: bool,
     pub artwork_dominant_color: Color32,
-    pub artwork_edge_colors: [Color32; 4],  // Ambilight: [top, right, bottom, left]
+    pub artwork_edge_colors: [Color32; 4], // Ambilight: [top, right, bottom, left]
 
     // Thumbnail Cache (for playlist/search results)
     pub thumb_cache: HashMap<String, TextureHandle>,
@@ -50,7 +50,7 @@ pub struct UIState {
     pub glow_smooth_intensity: f32,
     #[allow(dead_code)]
     pub last_frame_time: Option<Instant>,
-    pub audio_amplitude: f32,  // Real-time audio level (0.0-1.0) for reactive visuals
+    pub audio_amplitude: f32, // Real-time audio level (0.0-1.0) for reactive visuals
 
     // Playback Error Display
     pub last_playback_error: Option<String>,
@@ -132,8 +132,8 @@ impl UIState {
     #[allow(dead_code)]
     pub fn update_glow(&mut self, target_intensity: f32, delta_time: f32) {
         let smooth_speed = 3.0;
-        self.glow_smooth_intensity += (target_intensity - self.glow_smooth_intensity)
-            * smooth_speed * delta_time;
+        self.glow_smooth_intensity +=
+            (target_intensity - self.glow_smooth_intensity) * smooth_speed * delta_time;
         self.glow_intensity = self.glow_smooth_intensity;
     }
 }

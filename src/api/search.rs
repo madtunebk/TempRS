@@ -1,5 +1,5 @@
 // Search API endpoints for tracks and playlists
-use crate::models::{SearchTracksResponse, PlaylistSearchResults, PlaylistsResponse};
+use crate::models::{PlaylistSearchResults, PlaylistsResponse, SearchTracksResponse};
 
 /// Search tracks with smart pagination - fetches until we have enough playable results
 /// Returns exactly `min_results` tracks (or fewer if no more available)
@@ -20,7 +20,7 @@ pub async fn search_tracks_smart(
     // Keep fetching pages until we have enough playable tracks or run out of pages
     while all_playable_tracks.len() < min_results && next_url.is_some() {
         let url = next_url.clone().unwrap();
-        
+
         let response = crate::utils::http::retry_get_with_auth(&url, token).await?;
 
         let status = response.status();
@@ -35,13 +35,14 @@ pub async fn search_tracks_smart(
 
         let search_response: SearchTracksResponse = response.json().await?;
         pages_fetched += 1;
-        
+
         // Filter this page's tracks
-        let playable_from_page = crate::utils::track_filter::filter_playable_tracks(search_response.collection);
-        
+        let playable_from_page =
+            crate::utils::track_filter::filter_playable_tracks(search_response.collection);
+
         all_playable_tracks.extend(playable_from_page);
         next_url = search_response.next_href;
-        
+
         // Stop if we have enough
         if all_playable_tracks.len() >= min_results {
             break;
@@ -78,9 +79,10 @@ pub async fn search_tracks(
     }
 
     let search_response: SearchTracksResponse = response.json().await?;
-    
+
     // Filter out non-playable tracks (geo-locked, non-streamable, no stream URL, etc.)
-    let filtered_tracks = crate::utils::track_filter::filter_playable_tracks(search_response.collection);
+    let filtered_tracks =
+        crate::utils::track_filter::filter_playable_tracks(search_response.collection);
 
     Ok(SearchTracksResponse {
         collection: filtered_tracks,

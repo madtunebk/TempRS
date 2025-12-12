@@ -1,23 +1,23 @@
 /// Real-time FFT audio analysis for visualizer
-use rustfft::{FftPlanner, num_complex::Complex};
-use std::sync::Arc;
+use rustfft::{num_complex::Complex, FftPlanner};
 use std::sync::atomic::AtomicU32;
+use std::sync::Arc;
 
 // ============================================================================
 // FFT TUNING CONSTANTS - Adjust these to fine-tune visualizer behavior
 // ============================================================================
 
-const FFT_SIZE: usize = 2048;  // Good balance between frequency resolution and latency
-const SAMPLE_RATE: f32 = 44100.0;  // CD quality
+const FFT_SIZE: usize = 2048; // Good balance between frequency resolution and latency
+const SAMPLE_RATE: f32 = 44100.0; // CD quality
 
 // Energy scaling (INCREASE to lower bar heights, DECREASE to raise them)
-const BASS_SCALE: f32 = 2500.0;  // Bass normalization (was 1000.0, higher = lower bars)
-const MID_SCALE: f32  = 2500.0;  // Mid normalization
-const HIGH_SCALE: f32 = 2500.0;  // High normalization
+const BASS_SCALE: f32 = 2500.0; // Bass normalization (was 1000.0, higher = lower bars)
+const MID_SCALE: f32 = 2500.0; // Mid normalization
+const HIGH_SCALE: f32 = 2500.0; // High normalization
 
 // Smoothing (0.0 = instant changes, 1.0 = very smooth/laggy)
-const SMOOTHING_OLD: f32 = 0.3;  // Weight for old value (0.3 = 30% old)
-const SMOOTHING_NEW: f32 = 0.7;  // Weight for new value (0.7 = 70% new)
+const SMOOTHING_OLD: f32 = 0.3; // Weight for old value (0.3 = 30% old)
+const SMOOTHING_NEW: f32 = 0.7; // Weight for new value (0.7 = 70% new)
 
 // ============================================================================
 
@@ -49,7 +49,7 @@ impl AudioAnalyzer {
         for &sample in samples {
             self.buffer.push(sample as f32 / 32768.0);
         }
-        
+
         // Process FFT whenever we have enough samples
         while self.buffer.len() >= FFT_SIZE {
             self.run_fft();
@@ -64,7 +64,8 @@ impl AudioAnalyzer {
         let fft = planner.plan_fft_forward(FFT_SIZE);
 
         // Convert to complex numbers
-        let mut buffer: Vec<Complex<f32>> = self.buffer
+        let mut buffer: Vec<Complex<f32>> = self
+            .buffer
             .iter()
             .take(FFT_SIZE)
             .map(|&x| Complex { re: x, im: 0.0 })
@@ -72,7 +73,8 @@ impl AudioAnalyzer {
 
         // Apply Hann window to reduce spectral leakage
         for (i, sample) in buffer.iter_mut().enumerate() {
-            let window = 0.5 * (1.0 - ((2.0 * std::f32::consts::PI * i as f32) / (FFT_SIZE as f32 - 1.0)).cos());
+            let window = 0.5
+                * (1.0 - ((2.0 * std::f32::consts::PI * i as f32) / (FFT_SIZE as f32 - 1.0)).cos());
             sample.re *= window;
         }
 
@@ -115,10 +117,15 @@ impl AudioAnalyzer {
     }
 
     /// Calculate total energy in a frequency band
-    fn calculate_band_energy(&self, fft_buffer: &[Complex<f32>], range: std::ops::Range<usize>) -> f32 {
+    fn calculate_band_energy(
+        &self,
+        fft_buffer: &[Complex<f32>],
+        range: std::ops::Range<usize>,
+    ) -> f32 {
         let mut energy = 0.0;
         for i in range {
-            if i < fft_buffer.len() / 2 {  // Only use first half (positive frequencies)
+            if i < fft_buffer.len() / 2 {
+                // Only use first half (positive frequencies)
                 let magnitude = (fft_buffer[i].re.powi(2) + fft_buffer[i].im.powi(2)).sqrt();
                 energy += magnitude;
             }

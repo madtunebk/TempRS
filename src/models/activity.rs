@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use super::Track;
+use serde::Deserialize;
 
 /// Activity item from /me/activities endpoint
 #[derive(Debug, Deserialize, Clone)]

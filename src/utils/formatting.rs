@@ -5,5 +5,3 @@ pub fn format_duration(seconds: f32) -> String {
     let secs = total_seconds % 60;
     format!("{:02}:{:02}", minutes, secs)
 }
-
-

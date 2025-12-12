@@ -198,19 +198,31 @@ impl MusicPlayerApp {
     pub fn check_artwork(&mut self, ctx: &egui::Context) {
         if let Some(rx) = &self.tasks.artwork_rx {
             if let Ok(img) = rx.try_recv() {
-                // Extract colors only in GPU mode (used for shader glow effects)
-                if self.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu
-                {
-                    // Extract dominant color for ambient glow
+                let on_now_playing = matches!(self.ui.selected_tab, MainTab::NowPlaying);
+                let is_gpu = self.content.app_state.get_renderer_type()
+                    == crate::app_state::RendererType::Gpu;
+
+                // Extract colors only if needed for visuals (GPU + Now Playing visible)
+                if is_gpu && on_now_playing {
                     self.ui.artwork_dominant_color =
                         crate::utils::artwork::extract_dominant_color(&img);
-
-                    // Extract edge colors for Ambilight effect
-                    self.ui.artwork_edge_colors = crate::utils::artwork::extract_edge_colors(&img);
+                    self.ui.artwork_edge_colors =
+                        crate::utils::artwork::extract_edge_colors(&img);
                 }
 
-                self.ui.artwork_texture =
-                    Some(ctx.load_texture("artwork", img, egui::TextureOptions::LINEAR));
+                if on_now_playing {
+                    // Create texture immediately for visible view
+                    self.ui.artwork_texture = Some(ctx.load_texture(
+                        "artwork",
+                        img,
+                        egui::TextureOptions::LINEAR,
+                    ));
+                } else {
+                    // Defer texture upload until Now Playing is shown
+                    self.ui.pending_artwork_image = Some(img);
+                    self.ui.artwork_texture = None;
+                }
+
                 self.ui.artwork_loading = false;
                 self.tasks.artwork_rx = None;
             }
@@ -610,9 +622,9 @@ impl MusicPlayerApp {
         self.ui.seek_target_pos = Some(position);
     }
 
-    /// Get current playback position
+    /// Get current playback position (legacy; progress bar uses throttled cache)
+    #[allow(dead_code)]
     pub fn get_position(&self) -> Duration {
-        // Always return actual audio position, UI handles seek preview
         self.audio.audio_controller.get_position()
     }
 
@@ -2149,7 +2161,10 @@ impl eframe::App for MusicPlayerApp {
 
         // Check for shader hot-reload (delegated to ShaderManager)
         // Only in GPU mode - no shaders loaded in CPU mode
-        if self.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu {
+        if self.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu
+            && (matches!(self.ui.selected_tab, MainTab::NowPlaying)
+                || matches!(self.ui.screen, AppScreen::Splash))
+        {
             self.ui.shader_manager.check_hot_reload();
         }
 
@@ -2251,23 +2266,19 @@ impl eframe::App for MusicPlayerApp {
         // Check for playlist chunk updates
         self.check_playlist_chunks();
 
-        // Check for search results (background tasks)
-        self.check_search_results(ctx);
-
-        // Check for playlist load completion
-        self.check_playlist_load(ctx);
-
-        // Check for home screen data updates
-        self.check_home_updates();
-
-        // Check for suggestions updates
-        self.check_suggestions_updates();
-
-        // Check for likes updates
-        self.check_likes_updates();
-
-        // Check for playlists updates
-        self.check_playlists_updates();
+        // Background updates only for the active tab to avoid hidden work
+        match self.ui.selected_tab {
+            MainTab::Home => self.check_home_updates(),
+            MainTab::Search => self.check_search_results(ctx),
+            MainTab::Playlists => {
+                self.check_playlist_load(ctx);
+                self.check_playlists_updates();
+            }
+            MainTab::Suggestions => self.check_suggestions_updates(),
+            MainTab::Likes => self.check_likes_updates(),
+            MainTab::History => { /* history updates handled on demand */ }
+            MainTab::NowPlaying => { /* visuals only; playback runs regardless */ }
+        }
 
         // Check for fetched track data (from database tracks)
         self.check_track_fetch();

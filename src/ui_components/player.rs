@@ -1,5 +1,6 @@
 use eframe::egui;
 use egui::Layout;
+use std::time::{Duration, Instant};
 
 use crate::app::player_app::MusicPlayerApp;
 use crate::app_state::RepeatMode;
@@ -379,7 +380,21 @@ fn render_volume_controls(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
 }
 
 fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
-    let position = app.get_position();
+    // Throttle position queries in CPU mode to 250ms
+    let is_cpu = app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Cpu;
+    if is_cpu {
+        let now = Instant::now();
+        if now.duration_since(app.ui.progress_last_update) >= Duration::from_millis(250) || app.ui.is_seeking {
+            app.ui.progress_cached_pos = app.audio.audio_controller.get_position();
+            app.ui.progress_last_update = now;
+        }
+    } else {
+        // Keep cache fresh in GPU mode too so seek completion text is accurate
+        app.ui.progress_cached_pos = app.audio.audio_controller.get_position();
+        app.ui.progress_last_update = Instant::now();
+    }
+
+    let position = app.ui.progress_cached_pos;
     let duration = app.get_duration();
     let position_secs = position.as_secs_f32();
     let duration_secs = duration.as_secs_f32();
@@ -424,7 +439,7 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         // Background track
         painter.rect_filled(bar_rect, 2.0, egui::Color32::from_rgb(70, 70, 75));
 
-        let actual_position = app.audio.audio_controller.get_position().as_secs_f32();
+        let actual_position = app.ui.progress_cached_pos.as_secs_f32();
         let actual_progress = if duration_secs > 0.0 {
             actual_position / duration_secs
         } else {
@@ -444,14 +459,14 @@ fn render_progress_bar(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
             }
         } else if app.ui.is_seeking {
             if let Some(seek_target) = app.ui.seek_target_pos {
-                let seek_progress = seek_target.as_secs_f32() / duration_secs.max(0.001);
-                let diff = (seek_progress - actual_progress).abs();
-                if diff < 0.1 / duration_secs.max(1.0) {
+                // Consider seek complete when audio position is within 300ms of target
+                let diff_secs = (seek_target.as_secs_f32() - actual_position).abs();
+                if diff_secs <= 0.30 {
                     app.ui.seek_target_pos = None;
                     app.ui.is_seeking = false;
                     (actual_progress, false)
                 } else {
-                    (seek_progress, false)
+                    (seek_target.as_secs_f32() / duration_secs.max(0.001), false)
                 }
             } else {
                 app.ui.is_seeking = false;

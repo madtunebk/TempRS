@@ -51,7 +51,7 @@ fn main() -> Result<(), eframe::Error> {
     if use_gpu {
         log::info!("[Main] GPU mode: FPS set to 120, FFT enabled for shaders");
     } else {
-        log::info!("[Main] CPU mode: FPS limited to 60, FFT disabled");
+        log::info!("[Main] CPU mode: reduced FPS (idle ~4/s, active ~10/s), FFT disabled");
     }
 
     // Load app icon (music note emoji as fallback)
@@ -70,7 +70,8 @@ fn main() -> Result<(), eframe::Error> {
             .with_maximized(true) // Start maximized
             .with_decorations(true) // OS window decorations enabled
             .with_icon(icon_data),
-        vsync: false,         // Disable vsync for higher FPS
+        // Enable vsync in CPU mode to reduce extra swaps
+        vsync: !use_gpu,
         persist_window: true, // Remember window position
         renderer: if use_gpu {
             eframe::Renderer::Wgpu // GPU-accelerated with shader support

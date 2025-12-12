@@ -3,7 +3,7 @@ use crate::utils::{MultiPassCallback, ShaderCallback};
 use eframe::egui;
 
 /// Now Playing screen - Shows current track with large artwork, shader background, and audio-reactive glow
-pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
+pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     // Show error message if playback failed
     if let Some(error_msg) = &app.ui.last_playback_error {
         render_error_state(ui, error_msg);
@@ -20,6 +20,17 @@ pub fn render_now_playing_view(app: &mut MusicPlayerApp, ui: &mut egui::Ui, _ctx
     let current_track_clone = app.audio.playback_queue.current_track().cloned();
 
     if let Some(current_track) = current_track_clone {
+        // Lazy-create artwork texture when Now Playing becomes visible
+        if app.ui.artwork_texture.is_none() {
+            if let Some(img) = app.ui.pending_artwork_image.take() {
+                app.ui.artwork_texture = Some(ctx.load_texture(
+                    "artwork",
+                    img,
+                    egui::TextureOptions::LINEAR,
+                ));
+            }
+        }
+
         // Render shader background ONLY in GPU mode (expensive wgpu callbacks)
         // In CPU mode, skip shaders entirely to prevent 90% CPU usage on integrated GPUs
         if app.content.app_state.get_renderer_type() == crate::app_state::RendererType::Gpu {

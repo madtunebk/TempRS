@@ -38,6 +38,7 @@ pub struct UIState {
     pub artwork_loading: bool,
     pub artwork_dominant_color: Color32,
     pub artwork_edge_colors: [Color32; 4], // Ambilight: [top, right, bottom, left]
+    pub pending_artwork_image: Option<egui::ColorImage>,
 
     // Thumbnail Cache (for playlist/search results)
     pub thumb_cache: HashMap<String, TextureHandle>,
@@ -70,6 +71,10 @@ pub struct UIState {
     // Splash Screen
     pub splash_start_time: Option<Instant>,
     pub splash_min_duration: Duration,
+
+    // Progress bar throttling (CPU mode)
+    pub progress_cached_pos: Duration,
+    pub progress_last_update: Instant,
 }
 
 impl Default for UIState {
@@ -84,6 +89,7 @@ impl Default for UIState {
             artwork_loading: false,
             artwork_dominant_color: Color32::from_rgb(30, 30, 30),
             artwork_edge_colors: [Color32::from_rgb(30, 30, 30); 4],
+            pending_artwork_image: None,
             thumb_cache: HashMap::new(),
             thumb_pending: HashMap::new(),
             glow_intensity: 0.0,
@@ -100,6 +106,8 @@ impl Default for UIState {
             queue_collapsed: false,
             splash_start_time: Some(Instant::now()),
             splash_min_duration: Duration::from_millis(1500),
+            progress_cached_pos: Duration::ZERO,
+            progress_last_update: Instant::now(),
         }
     }
 }

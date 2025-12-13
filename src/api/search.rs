@@ -16,9 +16,10 @@ pub async fn search_tracks_smart(
     let mut all_playable_tracks = Vec::new();
     let mut next_url = Some(initial_url);
     let mut pages_fetched = 0;
+    const MAX_PAGES: usize = 5; // Limit to 5 pages to prevent excessive API calls
 
     // Keep fetching pages until we have enough playable tracks or run out of pages
-    while all_playable_tracks.len() < min_results && next_url.is_some() {
+    while all_playable_tracks.len() < min_results && next_url.is_some() && pages_fetched < MAX_PAGES {
         let url = next_url.clone().unwrap();
 
         let response = crate::utils::http::retry_get_with_auth(&url, token).await?;

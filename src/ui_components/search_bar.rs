@@ -86,9 +86,7 @@ fn render_search_type_selector(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         .clicked()
     {
         app.content.search_type = crate::app::player_app::SearchType::Tracks;
-        if !app.content.search_query.is_empty() {
-            crate::screens::search::trigger_search(app);
-        }
+        // Removed auto-search on tab switch - user must press Enter to search
     }
 
     let playlists_checked =
@@ -101,8 +99,6 @@ fn render_search_type_selector(app: &mut MusicPlayerApp, ui: &mut egui::Ui) {
         .clicked()
     {
         app.content.search_type = crate::app::player_app::SearchType::Playlists;
-        if !app.content.search_query.is_empty() {
-            crate::screens::search::trigger_search(app);
-        }
+        // Removed auto-search on tab switch - user must press Enter to search
     }
 }

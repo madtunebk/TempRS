@@ -91,8 +91,10 @@ pub async fn load_next_search_page_smart(
 ) -> Result<SearchTracksResponse, Box<dyn std::error::Error>> {
     let mut all_playable_tracks = Vec::new();
     let mut next_url = Some(next_href_opt.to_string());
+    let mut pages_fetched = 0;
+    const MAX_PAGES: usize = 5; // Limit to 5 pages to prevent excessive API calls
 
-    while all_playable_tracks.len() < min_results && next_url.is_some() {
+    while all_playable_tracks.len() < min_results && next_url.is_some() && pages_fetched < MAX_PAGES {
         let url = next_url.clone().unwrap();
 
         let response = crate::utils::http::retry_get_with_auth(&url, token).await?;
@@ -106,6 +108,7 @@ pub async fn load_next_search_page_smart(
         }
 
         let search_response: SearchTracksResponse = response.json().await?;
+        pages_fetched += 1;
 
         let playable_from_page =
             crate::utils::track_filter::filter_playable_tracks(search_response.collection);
@@ -120,14 +123,14 @@ pub async fn load_next_search_page_smart(
     })
 }
 
-/// Fetch multiple tracks by IDs in parallel (max 10 concurrent)
+/// Fetch multiple tracks by IDs in parallel (max 5 concurrent)
 /// Useful for batch loading history DB tracks or playlists
 #[allow(dead_code)]
 pub async fn fetch_tracks_batch(token: &str, track_ids: Vec<u64>) -> Vec<Track> {
     use futures_util::stream::{self, StreamExt};
 
     log::info!(
-        "[BatchFetch] Fetching {} tracks in parallel (max 10 concurrent)",
+        "[BatchFetch] Fetching {} tracks in parallel (max 5 concurrent)",
         track_ids.len()
     );
 
@@ -144,7 +147,7 @@ pub async fn fetch_tracks_batch(token: &str, track_ids: Vec<u64>) -> Vec<Track> 
                 }
             }
         })
-        .buffer_unordered(10) // Max 10 concurrent requests
+        .buffer_unordered(5) // Max 5 concurrent requests (reduced from 10 to save API calls)
         .collect::<Vec<_>>()
         .await;
 

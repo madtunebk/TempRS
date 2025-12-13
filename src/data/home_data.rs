@@ -1,4 +1,3 @@
-use crate::api::fetch_related_tracks;
 /// Home screen data management - handles fetching and caching of personalized content
 use crate::models::{Track, User};
 use crate::utils::playback_history::PlaybackHistoryDB;
@@ -99,12 +98,11 @@ pub fn fetch_recently_played_async(_token: String, tx: Sender<Vec<Track>>) {
     });
 }
 
-/// Fetch recommendations based on recently played tracks
-/// Uses the most recently played track to find related tracks
-/// Fallback: If history empty or API fails, fetch popular/trending tracks
-/// Always returns exactly 6 tracks
+/// Fetch recommendations based on local playback history
+/// NO API CALLS - uses only local database to prevent spam
+/// Returns tracks from history that aren't in the recently played section
 pub fn fetch_recommendations_async(
-    token: String,
+    _token: String,
     recently_played: Vec<Track>,
     tx: Sender<Vec<Track>>,
     limit: usize,
@@ -113,41 +111,69 @@ pub fn fetch_recommendations_async(
         Box::pin(async move {
             let mut recommendations: Vec<Track> = Vec::new();
 
-            // Try to use recently played track first
-            if let Some(track) = recently_played.first() {
-                let track_urn = format!("soundcloud:tracks:{}", track.id);
-                log::info!(
-                    "[Home] Finding {} related tracks for most recent: {} ({})",
-                    limit,
-                    track.title,
-                    track_urn
-                );
+            log::info!(
+                "[Home] Generating {} recommendations from local history (no API call)",
+                limit
+            );
 
-                // Get related tracks
-                match fetch_related_tracks(&token, &track_urn, limit).await {
-                    Ok(tracks) => {
-                        if !tracks.is_empty() {
-                            log::info!("[Home] Fetched {} related tracks", tracks.len());
-                            recommendations.extend(tracks);
-                        } else {
-                            log::warn!(
-                                "[Home] Related tracks returned empty, falling back to search"
-                            );
+            // Fetch more tracks from history than we need (to have enough after filtering)
+            match PlaybackHistoryDB::new() {
+                Ok(db) => {
+                    // Get more records than limit to ensure we have enough after filtering
+                    let records = db.get_recent_tracks(limit * 3);
+
+                    // Build set of recently played track IDs to exclude
+                    let recently_played_ids: std::collections::HashSet<u64> =
+                        recently_played.iter().map(|t| t.id).collect();
+
+                    log::info!(
+                        "[Home] Loaded {} tracks from history, filtering out {} recently played",
+                        records.len(),
+                        recently_played_ids.len()
+                    );
+
+                    // Convert PlaybackRecord to Track, excluding recently played
+                    for record in records {
+                        // Skip if already in recently played section
+                        if recently_played_ids.contains(&record.track_id) {
+                            continue;
+                        }
+
+                        let track = Track {
+                            id: record.track_id,
+                            title: record.title.clone(),
+                            user: User {
+                                id: 0,
+                                username: record.artist,
+                                avatar_url: None,
+                            },
+                            artwork_url: None, // Will be fetched from API when needed
+                            permalink_url: None,
+                            duration: record.duration,
+                            full_duration: None,
+                            genre: record.genre,
+                            streamable: Some(true),
+                            stream_url: None, // Will be fetched fresh from API when needed
+                            playback_count: None,
+                            access: None,
+                            policy: None,
+                        };
+
+                        recommendations.push(track);
+
+                        // Stop once we have enough recommendations
+                        if recommendations.len() >= limit {
+                            break;
                         }
                     }
-                    Err(e) => {
-                        log::error!("[Home] Failed to fetch related tracks: {}, falling back", e);
-                    }
                 }
-            } else {
-                log::info!("[Home] No recently played tracks, recommendations will be empty");
+                Err(e) => {
+                    log::error!("[Home] Failed to access playback history database: {}", e);
+                }
             }
 
-            // Final deduplication pass (in case related tracks had duplicates)
-            recommendations = crate::utils::track_filter::remove_duplicates(recommendations);
-
             log::info!(
-                "[Home] Sending {} recommendations total",
+                "[Home] Sending {} recommendations from local history",
                 recommendations.len()
             );
             let _ = tx.send(recommendations);

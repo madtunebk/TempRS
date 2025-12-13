@@ -31,8 +31,13 @@ pub async fn fetch_playlist_by_id(
 
         let mut all_tracks = Vec::new();
         let mut next_url = Some(tracks_url);
+        let mut pages_fetched = 0;
+        const MAX_PAGES: usize = 10; // Limit to 10 pages (1000 tracks max) to prevent excessive API calls
 
         while let Some(url) = next_url {
+            if pages_fetched >= MAX_PAGES {
+                break;
+            }
             let response = crate::utils::http::retry_get_with_auth(&url, token).await?;
 
             if !response.status().is_success() {
@@ -42,6 +47,7 @@ pub async fn fetch_playlist_by_id(
             let tracks_response: TracksResponse = response.json().await?;
             all_tracks.extend(tracks_response.collection);
             next_url = tracks_response.next_href;
+            pages_fetched += 1;
         }
 
         if !all_tracks.is_empty() {
@@ -72,8 +78,13 @@ pub async fn fetch_playlist_chunks(
 
     let mut next_url = Some(tracks_url);
     let mut total_fetched = 0;
+    let mut chunks_fetched = 0;
+    const MAX_CHUNKS: usize = 10; // Limit to 10 chunks (2000 tracks max) to prevent excessive API calls
 
     while let Some(url) = next_url {
+        if chunks_fetched >= MAX_CHUNKS {
+            break;
+        }
         let response = crate::utils::http::retry_get_with_auth(&url, token).await?;
 
         if !response.status().is_success() {
@@ -87,11 +98,14 @@ pub async fn fetch_playlist_chunks(
         let tracks_response: TracksResponse = response.json().await?;
         let chunk_size = tracks_response.collection.len();
         total_fetched += chunk_size;
+        chunks_fetched += 1;
 
         log::debug!(
-            "[Playlists] Fetched chunk of {} tracks (total: {})",
+            "[Playlists] Fetched chunk of {} tracks (total: {}, chunk {}/{})",
             chunk_size,
-            total_fetched
+            total_fetched,
+            chunks_fetched,
+            MAX_CHUNKS
         );
 
         // Send chunk immediately

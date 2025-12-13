@@ -269,9 +269,9 @@ pub fn fetch_artwork(
 
             let client = crate::utils::http::client();
 
-            // Try up to 3 times with exponential backoff
+            // Try up to 2 times with exponential backoff (reduced from 3 to save API calls)
             let mut success = false;
-            for attempt in 1..=3 {
+            for attempt in 1..=2 {
                 match client.get(&high_res_url).send().await {
                     Ok(resp) => {
                         if let Ok(bytes) = resp.bytes().await {
@@ -293,12 +293,10 @@ pub fn fetch_artwork(
                         }
                     }
                     Err(e) => {
-                        log::warn!("[Artwork] Attempt {}/3 failed: {}", attempt, e);
-                        if attempt < 3 {
-                            // Exponential backoff: 300ms, 600ms
-                            tokio::time::sleep(tokio::time::Duration::from_millis(
-                                300 * attempt as u64,
-                            ))
+                        log::warn!("[Artwork] Attempt {}/2 failed: {}", attempt, e);
+                        if attempt < 2 {
+                            // Backoff: 500ms
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500))
                             .await;
                         }
                     }
@@ -307,7 +305,7 @@ pub fn fetch_artwork(
 
             // If all attempts failed, cache and send no_artwork placeholder
             if !success {
-                log::warn!("[Artwork] All 3 attempts failed, caching placeholder");
+                log::warn!("[Artwork] All 2 attempts failed, caching placeholder");
                 send_placeholder(&tx, track_id);
             }
         });
@@ -356,6 +354,11 @@ pub fn load_thumbnail_artwork(
         return;
     }
 
+    // Skip download if already pending (prevents duplicate spawns during race condition)
+    if app.ui.thumb_pending.contains_key(&url) {
+        return;
+    }
+
     // FAST PATH: Try disk cache using track ID (sync, check every frame until loaded)
     if let Some(cached_data) = crate::utils::cache::load_artwork_cache(track_id) {
         log::debug!(
@@ -387,12 +390,7 @@ pub fn load_thumbnail_artwork(
         }
     }
 
-    // Skip download if already pending
-    if app.ui.thumb_pending.get(&url) == Some(&true) {
-        return;
-    }
-
-    // Mark as pending and start download
+    // Mark as pending BEFORE starting download to prevent race condition
     app.ui.thumb_pending.insert(url.clone(), true);
     log::debug!(
         "[Artwork] Track {} marked as pending for download",
@@ -413,8 +411,8 @@ pub fn load_thumbnail_artwork(
             let client = crate::utils::http::client();
             let mut success = false;
 
-            // Try up to 3 times with exponential backoff
-            for attempt in 1..=3 {
+            // Try up to 2 times with exponential backoff (reduced from 3 to save API calls)
+            for attempt in 1..=2 {
                 match client.get(&url_clone).send().await {
                     Ok(resp) => {
                         if let Ok(bytes) = resp.bytes().await {
@@ -440,7 +438,7 @@ pub fn load_thumbnail_artwork(
                                 break;
                             } else {
                                 log::warn!(
-                                    "[Artwork] Track {} invalid image data (attempt {}/3)",
+                                    "[Artwork] Track {} invalid image data (attempt {}/2)",
                                     track_id,
                                     attempt
                                 );
@@ -449,16 +447,14 @@ pub fn load_thumbnail_artwork(
                     }
                     Err(e) => {
                         log::warn!(
-                            "[Artwork] Track {} download failed (attempt {}/3): {}",
+                            "[Artwork] Track {} download failed (attempt {}/2): {}",
                             track_id,
                             attempt,
                             e
                         );
-                        if attempt < 3 {
-                            // Exponential backoff: 300ms, 600ms
-                            tokio::time::sleep(tokio::time::Duration::from_millis(
-                                300 * attempt as u64,
-                            ))
+                        if attempt < 2 {
+                            // Backoff: 500ms
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500))
                             .await;
                         }
                     }
@@ -468,11 +464,14 @@ pub fn load_thumbnail_artwork(
             // If all attempts failed, save placeholder to prevent retry loops
             if !success && validate_before_cache {
                 log::warn!(
-                    "[Artwork] Track {} all 3 attempts failed, caching placeholder",
+                    "[Artwork] Track {} all 2 attempts failed, caching placeholder",
                     track_id
                 );
                 let _ = crate::utils::cache::save_artwork_cache(track_id, &[], true);
             }
+
+            // Clear pending flag after completion (success or failure)
+            // Note: This runs in background thread, UI state update happens on next repaint
 
             Ok(())
         })

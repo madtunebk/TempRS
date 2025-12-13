@@ -1671,7 +1671,8 @@ impl MusicPlayerApp {
                                 let track_urn = format!("soundcloud:tracks:{}", recent_track.id);
                                 log::info!("[Suggestions] Using track '{}' for related tracks", recent_track.title);
 
-                                match crate::api::tracks::fetch_related_tracks(&token, &track_urn, 40).await {
+                                // Reduced from 40 to 20 to save API calls
+                                match crate::api::tracks::fetch_related_tracks(&token, &track_urn, 20).await {
                                     Ok(mut recommended) => {
                                         log::info!("[Suggestions] Got {} tracks from Recommended API", recommended.len());
                                         // Add all related tracks

@@ -59,7 +59,7 @@ fn is_retryable_status(status: reqwest::StatusCode) -> bool {
 }
 
 /// Retry a request with exponential backoff for transient errors
-/// Max 3 attempts with delays: 500ms, 1000ms, 2000ms
+/// Max 2 attempts with delays: 500ms
 #[allow(dead_code)]
 pub async fn retry_request<F, Fut, T, E>(mut f: F) -> Result<T, E>
 where
@@ -67,7 +67,7 @@ where
     Fut: std::future::Future<Output = Result<T, E>>,
     E: std::fmt::Display,
 {
-    const MAX_RETRIES: u32 = 3;
+    const MAX_RETRIES: u32 = 2;
     const BASE_DELAY_MS: u64 = 500;
 
     let mut last_error = None;
@@ -113,7 +113,7 @@ where
 /// Retry a reqwest GET request specifically
 #[allow(dead_code)]
 pub async fn retry_get(url: &str) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
-    const MAX_RETRIES: u32 = 3;
+    const MAX_RETRIES: u32 = 2;
     const BASE_DELAY_MS: u64 = 500;
 
     for attempt in 0..MAX_RETRIES {
@@ -148,7 +148,7 @@ pub async fn retry_get_with_auth(
     url: &str,
     token: &str,
 ) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
-    const MAX_RETRIES: u32 = 3;
+    const MAX_RETRIES: u32 = 2;
     const BASE_DELAY_MS: u64 = 500;
 
     for attempt in 0..MAX_RETRIES {
@@ -188,7 +188,7 @@ pub async fn retry_post_with_auth(
     url: &str,
     token: &str,
 ) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
-    const MAX_RETRIES: u32 = 3;
+    const MAX_RETRIES: u32 = 2;
     const BASE_DELAY_MS: u64 = 500;
 
     for attempt in 0..MAX_RETRIES {
@@ -225,7 +225,7 @@ pub async fn retry_delete_with_auth(
     url: &str,
     token: &str,
 ) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
-    const MAX_RETRIES: u32 = 3;
+    const MAX_RETRIES: u32 = 2;
     const BASE_DELAY_MS: u64 = 500;
 
     for attempt in 0..MAX_RETRIES {
